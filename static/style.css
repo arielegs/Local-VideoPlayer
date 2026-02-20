@@ -186,7 +186,7 @@ video {
     z-index: 20;
     display: flex;
     align-items: flex-end; /* Align visible bar to bottom of container */
-    padding: 0 10px; /* Slight horizontal padding */
+    padding: 0; /* No horizontal padding - Full Width */
     box-sizing: border-box; 
     transition: height 0.1s;
 }
@@ -197,7 +197,7 @@ video {
     height: 4px;
     background-color: rgba(255,255,255,0.3);
     position: relative; /* Relative to flex container */
-    border-radius: 2px;
+    border-radius: 0; /* Square edges for full width */
     transition: transform 0.1s, height 0.1s;
 }
 
@@ -208,8 +208,8 @@ video {
     background-color: #f00;
     position: absolute;
     bottom: 0; /* Align with bottom of bg */
-    left: 10px; /* Match container padding */
-    border-radius: 2px;
+    left: 0; /* Start from very edge */
+    border-radius: 0; /* Square edges for full width */
     transition: width 0.1s linear, height 0.1s;
     z-index: 2;
 }
@@ -224,7 +224,13 @@ video {
 .progress-bar::after {
     content: '';
     position: absolute;
-    right: -8px; /* Center centered on end of bar */
+    /* 
+       Knob width: 14px. Half width: 7px.
+       To center on the tip of the bar, we need right: -7px.
+       User says it's too far left currently (at 3px).
+       Let's put it back to perfect center relative to the bar tip.
+    */
+    right: -7px;
     top: 50%; /* Center vertically relative to bar */
     transform: translateY(-50%) scale(0);
     width: 14px;
@@ -237,6 +243,30 @@ video {
 
 .progress-bar-container:hover .progress-bar::after {
     transform: translateY(-50%) scale(1);
+}
+
+/* Time Tooltip over Progress Bar */
+.time-tooltip {
+    position: absolute;
+    bottom: 25px; /* Sits above the bar */
+    left: 0;
+    transform: translateX(-50%);
+    background: rgba(28, 28, 28, 0.9);
+    color: #fff;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-family: 'Roboto', sans-serif;
+    pointer-events: none; /* Let clicks pass through */
+    opacity: 0;
+    transition: opacity 0.1s;
+    white-space: nowrap;
+    z-index: 30;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.5);
+}
+
+.progress-bar-container:hover .time-tooltip {
+    opacity: 1;
 }
 
 .buttons {

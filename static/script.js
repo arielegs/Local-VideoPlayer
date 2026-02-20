@@ -189,6 +189,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const playPauseBtn = document.getElementById('play-pause');
     const progressBarContainer = document.getElementById('progress-bar-container');
     const progressBar = document.getElementById('progress-bar');
+    const timeTooltip = document.getElementById('time-tooltip');
     const timeDisplay = document.getElementById('time-display');
     const volumeSlider = document.getElementById('volume-slider');
     const fullscreenBtn = document.getElementById('fullscreen-btn');
@@ -276,8 +277,39 @@ document.addEventListener('DOMContentLoaded', () => {
     // Seek
     progressBarContainer.addEventListener('click', (e) => {
         const rect = progressBarContainer.getBoundingClientRect();
-        const pos = (e.clientX - rect.left) / rect.width;
+        // Account for the 0px padding on left/right defined in CSS
+        const padding = 0; 
+        const visualWidth = rect.width - (padding * 2);
+        const clickX = e.clientX - rect.left - padding;
+        
+        let pos = clickX / visualWidth;
+        // Clamp between 0 and 1
+        pos = Math.max(0, Math.min(1, pos));
+        
         videoPlayer.currentTime = pos * videoPlayer.duration;
+    });
+
+    // Time Tooltip
+    progressBarContainer.addEventListener('mousemove', (e) => {
+        const rect = progressBarContainer.getBoundingClientRect();
+        const padding = 0;
+        const visualWidth = rect.width - (padding * 2);
+        const clickX = e.clientX - rect.left - padding;
+        
+        let pos = clickX / visualWidth;
+        const hoverTime = pos * videoPlayer.duration;
+        
+        // Clamp and format
+        const safeTime = Math.max(0, Math.min(hoverTime, videoPlayer.duration));
+        timeTooltip.textContent = formatTime(safeTime);
+        
+        // Position the tooltip
+        // We want it centered on the cursor, but constrained to the container so it doesn't overflow
+        const tooltipWidth = timeTooltip.offsetWidth; // Get current width
+        let leftPos = e.clientX - rect.left;
+        
+        // Simple positioning
+        timeTooltip.style.left = `${leftPos}px`;
     });
 
     // Volume
@@ -404,7 +436,11 @@ document.addEventListener('DOMContentLoaded', () => {
     
     function updateProgressFromEvent(e) {
         const rect = progressBarContainer.getBoundingClientRect();
-        const pos = (e.clientX - rect.left) / rect.width;
+        const padding = 0;
+        const visualWidth = rect.width - (padding * 2);
+        const clickX = e.clientX - rect.left - padding;
+        
+        let pos = clickX / visualWidth;
         videoPlayer.currentTime = Math.max(0, Math.min(1, pos)) * videoPlayer.duration;
     }
 
