@@ -16,9 +16,9 @@
     "local",
     "private"
   ],
-  "author": "Kyzo",
+  "author": "arielegs",
   "build": {
-    "appId": "com.kyzo.localvideoplayer",
+    "appId": "com.arielegs.localvideoplayer",
     "productName": "LocalVideoPlayer",
     "directories": {
       "output": "dist"

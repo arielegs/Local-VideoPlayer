@@ -1,3 +1,12 @@
+# Local Video Player
+
+A lightweight, local, and private video player.
+
+## About
+This application allows you to play videos from your local machine with a clean, distraction-free interface.
+
+---
+
 # How to Run & Install `Local Video Player`
 
 This guide explains how to build, install, and run the **Local Video Player** on Windows, macOS, and Linux.
@@ -25,22 +34,22 @@ The output files will be located in the `dist` folder.
 ## 🖥️ 2. Running on Windows
 
 ### Option A: Installer (Recommended)
-1.  Go to the `dist` folder.
-2.  Run `Local Video Player Setup 1.0.0.exe`.
+1.  Download the latest installer (`.exe`) from the **[Releases](../../releases)** page.
+2.  Run the installer.
 3.  Follow the installation steps.
 4.  Launch "Local Video Player" from your Start Menu or Desktop.
 
-### Option B: Portable/Unpacked
-1.  Go to `dist/win-unpacked`.
-2.  Double-click `Local Video Player.exe`.
+### Option B: Portable
+1.  Download the portable executable if available from the **[Releases](../../releases)** page.
+2.  Double-click to run.
 
 ---
 
 ## 🍎 3. Running on macOS
 
-### Option A: DMV Installer
-1.  Go to the `dist` folder.
-2.  Open `Local Video Player-1.0.0.dmg`.
+### Option A: DMG Installer
+1.  Download the latest `.dmg` file from the **[Releases](../../releases)** page.
+2.  Open the file.
 3.  Drag the app icon into your `Applications` folder.
 4.  Run it from Launchpad or Spotlight.
 
@@ -53,11 +62,10 @@ The output files will be located in the `dist` folder.
 ## 🐧 4. Running on Linux
 
 ### Option A: AppImage (Universal)
-1.  Go to the `dist` folder.
-2.  Find `Local Video Player-1.0.0.AppImage`.
-3.  Right-click the file > **Properties** > **Permissions**.
-4.  Check **"Allow executing file as program"** (or run `chmod +x filename.AppImage` in terminal).
-5.  Double-click to run.
+1.  Download the latest `.AppImage` file from the **[Releases](../../releases)** page.
+2.  Right-click the file > **Properties** > **Permissions**.
+3.  Check **"Allow executing file as program"** (or run `chmod +x filename.AppImage` in terminal).
+4.  Double-click to run.
 
 ---
 
