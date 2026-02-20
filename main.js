@@ -1,6 +1,11 @@
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, session } = require('electron');
 const path = require('path');
 const startServer = require('./server');
+
+// Fix for Windows "Access is denied" cache issues in dev mode
+// Use a temp directory for user data instead of the locked AppData one
+const userDataPath = path.join(app.getPath('temp'), 'LocalVideoPlayerDev');
+app.setPath('userData', userDataPath);
 
 let mainWindow;
 let server;
@@ -20,6 +25,9 @@ function createWindow() {
 
   // Remove the menu completely for a cleaner look
   mainWindow.setMenuBarVisibility(false);
+
+  // Clear cache to ensure new changes are loaded
+  mainWindow.webContents.session.clearCache();
 
   // Start the Express server first
   server = startServer(5000);

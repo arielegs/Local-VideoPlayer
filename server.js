@@ -5,9 +5,45 @@ const app = express();
 
 app.use(express.json());
 
-const CONFIG_FILE = path.join(__dirname, 'config.json');
-const PROGRESS_FILE = path.join(__dirname, 'progress.json');
-const LAST_PLAYED_FILE = path.join(__dirname, 'last_played.json');
+// Determine if we are running in development or production
+// In packaged apps (electron-builder), __dirname is inside app.asar which is read-only.
+// We should store data in the user's data directory.
+// However, the user wants separation.
+// If running from source (dev), we'll use a local 'dev_data' folder.
+// If running installed, we'll use the user's AppData folder.
+
+// Detect if running in Electron (via existence of process.versions.electron)
+const isElectron = !!process.versions.electron;
+// Detect if packaged (production build)
+const isPackaged = __dirname.includes('app.asar');
+
+let DATA_DIR;
+
+if (isPackaged) {
+    // Production/Installed mode: specific user data folder
+    // We can't easily get app.getPath('userData') here without passing it from main.js
+    // For now, let's assume relative to the executable for portable, or AppData for installed.
+    // Given the user wants separation, let's use the OS temp directory or local AppData as a fallback if not passed.
+    // A better approach: main.js should pass the data path.
+    // Fallback logic specific to Windows typical install paths:
+    DATA_DIR = path.join(process.env.APPDATA || '.', 'LocalVideoPlayer');
+} else {
+    // Development mode: use a local folder to separate from installed version
+    DATA_DIR = path.join(__dirname, 'dev_data');
+}
+
+if (!fs.existsSync(DATA_DIR)) {
+    try {
+        fs.mkdirSync(DATA_DIR, { recursive: true });
+    } catch (e) {
+        // Fallback to current dir if permission denied
+        DATA_DIR = __dirname;
+    }
+}
+
+const CONFIG_FILE = path.join(DATA_DIR, 'config.json');
+const PROGRESS_FILE = path.join(DATA_DIR, 'progress.json');
+const LAST_PLAYED_FILE = path.join(DATA_DIR, 'last_played.json');
 
 // Helper functions (same logic as Python)
 function loadConfig() {
@@ -101,7 +137,11 @@ function getVideoFiles(directory) {
 }
 
 // Routes
-// Serve static files
+// Serve static files with caching disabled for development
+app.use((req, res, next) => {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    next();
+});
 app.use('/static', express.static(path.join(__dirname, 'static')));
 
 // Serve index.html

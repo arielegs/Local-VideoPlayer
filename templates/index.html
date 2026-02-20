@@ -5,7 +5,8 @@
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'self' blob:; connect-src 'self';">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Local Video Player</title>
-    <link rel="stylesheet" href="/static/style.css">
+    <!-- Force CSS refresh -->
+    <link rel="stylesheet" href="/static/style.css?v=2">
 </head>
 <body>
     <div class="container">
@@ -19,10 +20,22 @@
             </div>
         </div>
         <div class="main-content">
-            <div class="player-container">
-                <video id="video-player" controls>
+            <div class="player-container" id="player-container">
+                <video id="video-player">
                     Your browser does not support the video tag.
                 </video>
+                <div class="controls" id="video-controls">
+                    <div class="progress-bar-container" id="progress-bar-container">
+                        <div class="progress-bar" id="progress-bar"></div>
+                    </div>
+                    <div class="buttons">
+                        <button id="play-pause" title="Play/Pause">⏵</button>
+                        <span id="time-display">0:00 / 0:00</span>
+                        <div class="spacer"></div>
+                        <input type="range" id="volume-slider" min="0" max="1" step="0.1" value="1" title="Volume">
+                        <button id="fullscreen-btn" title="Fullscreen">⛶</button>
+                    </div>
+                </div>
             </div>
             <div class="video-info">
                 <h2 id="current-video-title">Select a video to play</h2>
@@ -41,6 +54,7 @@
         </div>
     </div>
 
-    <script src="/static/script.js"></script>
+    <!-- Force JS refresh -->
+    <script src="/static/script.js?v=2"></script>
 </body>
 </html>

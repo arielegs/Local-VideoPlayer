@@ -184,4 +184,147 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Initial load
     loadVideos();
+
+    // Custom Video Controls Logic
+    const playPauseBtn = document.getElementById('play-pause');
+    const progressBarContainer = document.getElementById('progress-bar-container');
+    const progressBar = document.getElementById('progress-bar');
+    const timeDisplay = document.getElementById('time-display');
+    const volumeSlider = document.getElementById('volume-slider');
+    const fullscreenBtn = document.getElementById('fullscreen-btn');
+    const playerContainer = document.getElementById('player-container');
+    const controls = document.getElementById('video-controls');
+    let controlsTimeout;
+
+    // Toggle Play/Pause
+    function togglePlay() {
+        if (videoPlayer.paused || videoPlayer.ended) {
+            videoPlayer.play();
+        } else {
+            videoPlayer.pause();
+        }
+    }
+
+    playPauseBtn.addEventListener('click', togglePlay);
+    videoPlayer.addEventListener('click', togglePlay);
+
+    // Sync UI with state
+    videoPlayer.addEventListener('play', () => {
+        playPauseBtn.textContent = '⏸';
+        // Hide controls shortly after playing starts? No, wait for mouse move or timeout
+        showControls();
+    });
+
+    videoPlayer.addEventListener('pause', () => {
+        playPauseBtn.textContent = '⏵';
+        showControls(); // show controls when paused
+        clearTimeout(controlsTimeout); // keep them shown
+        controls.style.opacity = '1';
+        controls.style.pointerEvents = 'auto';
+        playerContainer.style.cursor = 'default';
+    });
+
+    // Update Progress Bar & Time
+    videoPlayer.addEventListener('timeupdate', () => {
+        if (!videoPlayer.duration) return;
+        const percent = (videoPlayer.currentTime / videoPlayer.duration) * 100;
+        progressBar.style.width = `${percent}%`;
+        
+        const current = formatTime(videoPlayer.currentTime);
+        const total = formatTime(videoPlayer.duration);
+        timeDisplay.textContent = `${current} / ${total}`;
+    });
+
+    // Seek
+    progressBarContainer.addEventListener('click', (e) => {
+        const rect = progressBarContainer.getBoundingClientRect();
+        const pos = (e.clientX - rect.left) / rect.width;
+        videoPlayer.currentTime = pos * videoPlayer.duration;
+    });
+
+    // Volume
+    volumeSlider.addEventListener('input', (e) => {
+        videoPlayer.volume = e.target.value;
+    });
+
+    // Fullscreen
+    fullscreenBtn.addEventListener('click', () => {
+        if (!document.fullscreenElement) {
+            playerContainer.requestFullscreen();
+            fullscreenBtn.textContent = '⛶'; // Exit icon?
+        } else {
+            document.exitFullscreen();
+            fullscreenBtn.textContent = '⛶';
+        }
+    });
+
+    // Reset Play button on end
+    videoPlayer.addEventListener('ended', () => {
+        playPauseBtn.textContent = '⏵';
+    });
+
+    // Keyboard Shortcuts
+    document.addEventListener('keydown', (e) => {
+        // Ignore if typing in an input
+        if (document.activeElement.tagName === 'INPUT') return;
+
+        switch(e.key) {
+            case ' ':
+            case 'k':
+                e.preventDefault(); // Prevent scrolling
+                togglePlay();
+                break;
+            case 'ArrowRight':
+                e.preventDefault();
+                videoPlayer.currentTime = Math.min(videoPlayer.duration, videoPlayer.currentTime + 5);
+                break;
+            case 'ArrowLeft':
+                e.preventDefault();
+                videoPlayer.currentTime = Math.max(0, videoPlayer.currentTime - 5);
+                break;
+            case 'f':
+                e.preventDefault();
+                fullscreenBtn.click();
+                break;
+            case 'm':
+                e.preventDefault();
+                videoPlayer.muted = !videoPlayer.muted;
+                break;
+        }
+    });
+
+    // Helper: Format time
+    function formatTime(seconds) {
+        if(isNaN(seconds)) return "0:00";
+        const mins = Math.floor(seconds / 60);
+        const secs = Math.floor(seconds % 60);
+        return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+    }
+
+    // Hide controls after inactivity
+    function showControls() {
+        controls.style.opacity = '1';
+        controls.style.pointerEvents = 'auto';
+        playerContainer.style.cursor = 'default';
+        
+        clearTimeout(controlsTimeout);
+        controlsTimeout = setTimeout(() => {
+            if (!videoPlayer.paused) {
+                // If hovering over controls, don't hide
+                if (controls.matches(':hover')) {
+                    showControls(); // Check again later
+                    return;
+                }
+                controls.style.opacity = '0';
+                controls.style.pointerEvents = 'none';
+                playerContainer.style.cursor = 'none'; // Hide cursor
+            }
+        }, 3000);
+    }
+
+    playerContainer.addEventListener('mousemove', showControls);
+    playerContainer.addEventListener('click', showControls);
+
+    // Initial show
+    showControls();
 });
