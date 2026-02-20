@@ -293,6 +293,28 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    // Double Click Fullscreen
+    playerContainer.addEventListener('dblclick', (e) => {
+        // Prevent triggering the single click play/pause if possible, or just accept the toggle
+        e.preventDefault(); 
+        fullscreenBtn.click();
+    });
+
+    // Mouse Wheel Volume Control
+    playerContainer.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        // standard deltaY is around 100 for a notch. 
+        // We want small increments. -0.05 per notch.
+        const delta = Math.sign(e.deltaY) * -0.05; 
+        let newVol = videoPlayer.volume + delta;
+        newVol = Math.max(0, Math.min(1, newVol));
+        videoPlayer.volume = newVol;
+        volumeSlider.value = newVol;
+        
+        // Show controls so user sees the volume change
+        showControls();
+    });
+
     // Helper: Format time
     function formatTime(seconds) {
         if(isNaN(seconds)) return "0:00";
