@@ -1,34 +1,25 @@
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
-const app = express();
+const expressApp = express();
 
-app.use(express.json());
+expressApp.use(express.json());
+
+const { app } = require('electron');
 
 // Determine if we are running in development or production
 // In packaged apps (electron-builder), __dirname is inside app.asar which is read-only.
 // We should store data in the user's data directory.
-// However, the user wants separation.
-// If running from source (dev), we'll use a local 'dev_data' folder.
-// If running installed, we'll use the user's AppData folder.
 
-// Detect if running in Electron (via existence of process.versions.electron)
-const isElectron = !!process.versions.electron;
-// Detect if packaged (production build)
-const isPackaged = __dirname.includes('app.asar');
-
+const isPackaged = app.isPackaged; 
 let DATA_DIR;
 
 if (isPackaged) {
-    // Production/Installed mode: specific user data folder
-    // We can't easily get app.getPath('userData') here without passing it from main.js
-    // For now, let's assume relative to the executable for portable, or AppData for installed.
-    // Given the user wants separation, let's use the OS temp directory or local AppData as a fallback if not passed.
-    // A better approach: main.js should pass the data path.
-    // Fallback logic specific to Windows typical install paths:
-    DATA_DIR = path.join(process.env.APPDATA || '.', 'LocalVideoPlayer');
+    // Production: Use the standard Electron User Data directory.
+    // This persists across updates and is OS-agnostic (Windows, Mac, Linux).
+    DATA_DIR = app.getPath('userData');
 } else {
-    // Development mode: use a local folder to separate from installed version
+    // Development: Use local folder to avoid messing with installed version
     DATA_DIR = path.join(__dirname, 'dev_data');
 }
 
@@ -36,7 +27,7 @@ if (!fs.existsSync(DATA_DIR)) {
     try {
         fs.mkdirSync(DATA_DIR, { recursive: true });
     } catch (e) {
-        // Fallback to current dir if permission denied
+        // Fallback
         DATA_DIR = __dirname;
     }
 }
@@ -138,23 +129,23 @@ function getVideoFiles(directory) {
 
 // Routes
 // Serve static files with caching disabled for development
-app.use((req, res, next) => {
+expressApp.use((req, res, next) => {
     res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
     next();
 });
-app.use('/static', express.static(path.join(__dirname, 'static')));
+expressApp.use('/static', express.static(path.join(__dirname, 'static')));
 
 // Serve index.html
-app.get('/', (req, res) => {
+expressApp.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'templates', 'index.html'));
 });
 
 // Config API
-app.get('/api/config', (req, res) => {
+expressApp.get('/api/config', (req, res) => {
     res.json(loadConfig());
 });
 
-app.post('/api/config', (req, res) => {
+expressApp.post('/api/config', (req, res) => {
     const newDir = req.body.video_directory;
     if (newDir) {
         const config = loadConfig();
@@ -167,7 +158,7 @@ app.post('/api/config', (req, res) => {
 });
 
 // Videos API
-app.get('/api/videos', (req, res) => {
+expressApp.get('/api/videos', (req, res) => {
     const config = loadConfig();
     const directory = config.video_directory || '.';
     const absDirectory = path.resolve(directory); // Ensure absolute before check
@@ -179,7 +170,7 @@ app.get('/api/videos', (req, res) => {
 });
 
 // Progress API
-app.post('/api/progress', (req, res) => {
+expressApp.post('/api/progress', (req, res) => {
     const { video_path, timestamp } = req.body;
     if (video_path !== undefined && timestamp !== undefined) {
         saveProgress(video_path, timestamp);
@@ -189,7 +180,7 @@ app.post('/api/progress', (req, res) => {
     }
 });
 
-app.get(/^\/api\/progress\/(.*)/, (req, res) => {
+expressApp.get(/^\/api\/progress\/(.*)/, (req, res) => {
     // Extract the path after /api/progress/
     // Python code handles encoded paths somewhat automatically?
     // Here we need to be careful. The client sends encoded path.
@@ -200,7 +191,7 @@ app.get(/^\/api\/progress\/(.*)/, (req, res) => {
 });
 
 // Last played API
-app.get('/api/last_played', (req, res) => {
+expressApp.get('/api/last_played', (req, res) => {
     if (fs.existsSync(LAST_PLAYED_FILE)) {
         try {
             const data = JSON.parse(fs.readFileSync(LAST_PLAYED_FILE, 'utf8'));
@@ -214,7 +205,7 @@ app.get('/api/last_played', (req, res) => {
 });
 
 // Serve Video Files
-app.get(/^\/video\/(.*)/, (req, res) => {
+expressApp.get(/^\/video\/(.*)/, (req, res) => {
     const config = loadConfig();
     const videoDir = path.resolve(config.video_directory || '.');
     const filename = req.params[0]; // Captures the rest of the path
@@ -235,7 +226,7 @@ function startServer(port) {
         fs.writeFileSync(CONFIG_FILE, JSON.stringify({"video_directory": "./videos"}, null, 4));
     }
     
-    const server = app.listen(port, '127.0.0.1', () => {
+    const server = expressApp.listen(port, '127.0.0.1', () => {
         console.log(`Server running on port ${port} (Local Only)`);
     });
     return server;

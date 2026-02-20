@@ -39,7 +39,17 @@
       "target": "AppImage",
       "icon": "icon.png",
       "category": "Video"
-    }
+    },
+    "files": [
+      "**/*",
+      "!.*",
+      "!dev_data",
+      "!dist",
+      "!config.json",
+      "!progress.json",
+      "!last_played.json",
+      "!config.example.json"
+    ]
   },
   "license": "ISC",
   "type": "commonjs",

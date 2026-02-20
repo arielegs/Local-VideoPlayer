@@ -3,9 +3,11 @@ const path = require('path');
 const startServer = require('./server');
 
 // Fix for Windows "Access is denied" cache issues in dev mode
-// Use a temp directory for user data instead of the locked AppData one
-const userDataPath = path.join(app.getPath('temp'), 'LocalVideoPlayerDev');
-app.setPath('userData', userDataPath);
+// ONLY apply this in development. In production, use standard UserData for persistence.
+if (!app.isPackaged) {
+    const userDataPath = path.join(app.getPath('temp'), 'LocalVideoPlayerDev');
+    app.setPath('userData', userDataPath);
+}
 
 let mainWindow;
 let server;
