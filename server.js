@@ -137,7 +137,16 @@ expressApp.use('/static', express.static(path.join(__dirname, 'static')));
 
 // Serve index.html
 expressApp.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'templates', 'index.html'));
+    // When running in an AppImage, __dirname points to resources/app.asar/
+    // We need to ensure we're serving the file correctly from the archive.
+    const indexPath = path.join(__dirname, 'templates/index.html');
+    
+    // Explicitly check logging (this will show in terminal if you run from term)
+    console.log('Serving index from:', indexPath);
+
+    // Using fs.readFile might be safer for ASAR archives in some contexts
+    // but res.sendFile usually handles it. Let's try adding root option.
+    res.sendFile('templates/index.html', { root: __dirname });
 });
 
 // Config API

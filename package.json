@@ -16,12 +16,21 @@
     "local",
     "private"
   ],
-  "author": "arielegs",
+  "author": {
+    "name": "arielegs",
+    "email": "none@none.com"
+  },
   "build": {
     "appId": "com.arielegs.localvideoplayer",
     "productName": "LocalVideoPlayer",
     "directories": {
       "output": "dist"
+    },
+    "linux": {
+      "target": ["AppImage", "deb"],
+      "icon": "icon.png",
+      "category": "Video",
+      "maintainer": "arielegs <ArieLegs>"
     },
     "win": {
       "target": "nsis",
@@ -40,7 +49,7 @@
       "icon": "icon.png"
     },
     "linux": {
-      "target": "AppImage",
+      "target": ["AppImage", "deb"],
       "icon": "icon.png",
       "category": "Video"
     },

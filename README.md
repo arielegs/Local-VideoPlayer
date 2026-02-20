@@ -62,10 +62,31 @@ The output files will be located in the `dist` folder.
 ## 🐧 4. Running on Linux
 
 ### Option A: AppImage (Universal)
+**Supported Distributions:** Ubuntu, Debian, Fedora, Arch Linux, Manjaro, Mint, and most others.
+
 1.  Download the latest `.AppImage` file from the **[Releases](../../releases)** page.
 2.  Right-click the file > **Properties** > **Permissions**.
 3.  Check **"Allow executing file as program"** (or run `chmod +x filename.AppImage` in terminal).
 4.  Double-click to run.
+
+*> **Note for Ubuntu 22.04+ users:** If the app doesn't open, you may need to install FUSE support: `sudo apt install libfuse2`*
+
+### Option B: DEB Installer (Debian/Ubuntu/Mint)
+**Recommended for:** Ubuntu, Linux Mint, Pop!_OS, Debian.
+
+1.  Download the latest `.deb` file from the **[Releases](../../releases)** page.
+2.  Double-click to open in Software Center and click **Install**.
+3.  **Or via terminal:**
+    ```bash
+    sudo dpkg -i LocalVideoPlayer-1.0.0.deb
+    ```
+4.  Launch "Local Video Player" from your applications menu.
+
+### 🗑️ Uninstalling on Linux (Debian/Ubuntu)
+To uninstall the `.deb` version:
+```bash
+sudo apt remove local-videoplayer
+```
 
 ---
 
