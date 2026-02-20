@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'self' blob:; connect-src 'self';">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Local Video Player</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <div class="sidebar">
+            <div class="header">
+                <h2>Videos</h2>
+                <button id="folder-btn" title="Change Video Folder">📁</button>
+            </div>
+            <div id="video-list" class="video-list">
+                <!-- Videos will be populated here -->
+            </div>
+        </div>
+        <div class="main-content">
+            <div class="player-container">
+                <video id="video-player" controls>
+                    Your browser does not support the video tag.
+                </video>
+            </div>
+            <div class="video-info">
+                <h2 id="current-video-title">Select a video to play</h2>
+            </div>
+        </div>
+    </div>
+
+    <!-- Simple modal to change directory -->
+    <div id="settings-modal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h3>Settings</h3>
+            <label for="video-dir-input">Video Directory Path:</label>
+            <input type="text" id="video-dir-input" placeholder="C:/Users/Videos">
+            <button id="save-settings">Save</button>
+        </div>
+    </div>
+
+    <script src="/static/script.js"></script>
+</body>
+</html>

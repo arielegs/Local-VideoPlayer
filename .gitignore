@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.vscode/
+config.json
+last_played.json
+progress.json
+.DS_Store
+Thumbs.db
