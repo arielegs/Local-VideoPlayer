@@ -7,6 +7,13 @@ const startServer = require('./server');
 if (!app.isPackaged) {
     const userDataPath = path.join(app.getPath('temp'), 'LocalVideoPlayerDev');
     app.setPath('userData', userDataPath);
+} else {
+    // Ensure consistent user data path for production
+    // Previous versions might have used 'LocalVideoPlayer' (no spaces)
+    // We want to maintain compatibility or force a specific path
+    const appData = app.getPath('appData');
+    const userDataPath = path.join(appData, 'LocalVideoPlayer'); // Explicitly match old folder
+    app.setPath('userData', userDataPath);
 }
 
 let mainWindow;

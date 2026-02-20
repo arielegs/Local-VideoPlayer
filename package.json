@@ -19,17 +19,21 @@
   "author": "Kyzo",
   "build": {
     "appId": "com.kyzo.localvideoplayer",
-    "productName": "Local Video Player",
+    "productName": "LocalVideoPlayer",
     "directories": {
       "output": "dist"
     },
     "win": {
       "target": "nsis",
-      "icon": "icon.png"
+      "icon": "icon.png",
+      "artifactName": "${productName} Setup.${ext}"
     },
     "nsis": {
       "oneClick": false,
-      "allowToChangeInstallationDirectory": true
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "${productName} Setup.${ext}",
+      "uninstallDisplayName": "${productName}",
+      "packElevateHelper": false
     },
     "mac": {
       "target": "dmg",
