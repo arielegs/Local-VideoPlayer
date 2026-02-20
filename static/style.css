@@ -133,67 +133,238 @@ video {
     pointer-events: none; /* Allow clicks to pass through when hidden? No, button clicks won't work */
 }
 
+.player-container:fullscreen {
+    max-width: none;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: black;
+}
+
+.player-container:fullscreen video {
+    max-height: 100%;
+    height: 100%;
+    width: 100%;
+    object-fit: contain;
+}
+
+/* Modern Translucent Controls */
+.controls {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 0;
+    /* Smooth gradient fade up from bottom */
+    background: linear-gradient(to top, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0.4) 60%, rgba(0,0,0,0) 100%);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    pointer-events: none;
+    height: 80px; /* Taller gradient area for readability */
+}
+
+/* Show controls on hover */
 .player-container:hover .controls,
 .controls:hover {
     opacity: 1;
     pointer-events: auto;
 }
 
-/* Ensure controls are clickable even if faded (handled by hover) but keep pointer-events logic correct */
-.controls { pointer-events: auto; } /* Actually let's just use opacity */
-
+/* Progress Bar Container - Full Width Interaction Area */
 .progress-bar-container {
     width: 100%;
-    height: 5px;
-    background-color: rgba(255,255,255,0.3);
+    height: 15px; /* Taller hit area for easier grabbing */
     cursor: pointer;
-    margin-bottom: 10px;
-    border-radius: 2px;
-    position: relative;
+    position: absolute;
+    bottom: 50px; /* Sit comfortably above buttons */
+    left: 0;
+    z-index: 20;
+    display: flex;
+    align-items: flex-end; /* Align visible bar to bottom of container */
+    padding: 0 10px; /* Slight horizontal padding */
+    box-sizing: border-box; 
+    transition: height 0.1s;
 }
 
-.progress-bar {
-    height: 100%;
-    width: 0%;
-    background-color: #3700b3; /* Primary color */
+/* Background Track - The grey line */
+.progress-bar-background {
+    width: 100%;
+    height: 4px;
+    background-color: rgba(255,255,255,0.3);
+    position: relative; /* Relative to flex container */
     border-radius: 2px;
-    transition: width 0.1s linear;
+    transition: transform 0.1s, height 0.1s;
+}
+
+/* Active Fill - The red line */
+.progress-bar {
+    height: 4px;
+    width: 0%;
+    background-color: #f00;
+    position: absolute;
+    bottom: 0; /* Align with bottom of bg */
+    left: 10px; /* Match container padding */
+    border-radius: 2px;
+    transition: width 0.1s linear, height 0.1s;
+    z-index: 2;
+}
+
+/* Hover Effects for Progress Bar */
+.progress-bar-container:hover .progress-bar-background,
+.progress-bar-container:hover .progress-bar {
+    height: 6px; /* Grow vertically on hover */
+}
+
+/* The Knob - Visible on Hover */
+.progress-bar::after {
+    content: '';
+    position: absolute;
+    right: -8px; /* Center centered on end of bar */
+    top: 50%; /* Center vertically relative to bar */
+    transform: translateY(-50%) scale(0);
+    width: 14px;
+    height: 14px;
+    background-color: #f00;
+    border-radius: 50%;
+    transition: transform 0.1s;
+    box-shadow: 0 0 4px rgba(0,0,0,0.5);
+}
+
+.progress-bar-container:hover .progress-bar::after {
+    transform: translateY(-50%) scale(1);
 }
 
 .buttons {
     display: flex;
     align-items: center;
-    gap: 15px;
-    color: white;
+    gap: 15px; /* More breathing room */
+    color: #eee;
+    height: 50px; /* Taller button area */
+    width: 100%; /* REQUIRED for spacer to push fullscreen right */
+    padding: 0 20px; /* Side padding */
+    box-sizing: border-box;
 }
 
 .buttons button {
     background: none;
     border: none;
-    color: white;
+    color: #fff;
     cursor: pointer;
-    font-size: 1.2rem;
-    padding: 5px;
-    transition: transform 0.1s;
+    padding: 8px; /* Larger click area */
+    border-radius: 50%;
+    transition: background-color 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    outline: none; /* Remove focus outline */
+    -webkit-tap-highlight-color: transparent;
+}
+
+.buttons button:focus {
+    outline: none;
+}
+
+.buttons button:active {
+    background-color: rgba(255,255,255,0.25);
+    transform: scale(0.95);
 }
 
 .buttons button:hover {
-    transform: scale(1.1);
-    color: #ffd700;
+    background-color: rgba(255,255,255,0.15);
+}
+
+.icon {
+    width: 24px;
+    height: 24px;
+    fill: currentColor;
+    filter: drop-shadow(0 0 2px rgba(0,0,0,0.5));
 }
 
 #time-display {
-    font-size: 0.9rem;
-    font-family: monospace;
+    font-size: 13px;
+    font-family: 'Roboto', 'Segoe UI', sans-serif;
+    color: #fff;
+    font-weight: 500;
+    margin-left: 10px;
+    text-shadow: 0 0 2px rgba(0,0,0,0.5);
+    min-width: 90px;
 }
 
 .spacer {
     flex: 1;
+    display: block; /* Ensure it works */
 }
 
+/* Volume Container */
+.volume-container {
+    display: flex;
+    align-items: center;
+    position: relative;
+    height: 100%;
+    /* On hover of the container, we can show the slider */
+}
+
+/* Custom Volume Slider Styling */
 #volume-slider {
-    width: 100px;
-    accent-color: #3700b3;
+    -webkit-appearance: none; /* Override default CSS styles */
+    appearance: none;
+    width: 0; /* Hidden by default */
+    height: 4px; /* Thin track */
+    background: rgba(255,255,255,0.3); /* Track color */
+    outline: none;
+    opacity: 0;
+    transition: width 0.2s ease, opacity 0.2s ease, margin 0.2s ease;
+    border-radius: 2px;
+    margin-left: 0;
+    margin-right: 0;
+    cursor: pointer;
+}
+
+/* Reveal slider on hover of speaker or slider itself */
+.volume-container:hover #volume-slider,
+#volume-slider:hover {
+    width: 80px;
+    opacity: 1;
+    margin-left: 10px;
+    margin-right: 10px;
+}
+
+
+/* Thumb (Handle) */
+#volume-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 12px;
+    height: 12px;
+    background: #eee;
+    cursor: pointer;
+    border-radius: 50%;
+    transition: transform 0.1s;
+}
+
+#volume-slider::-webkit-slider-thumb:hover {
+    transform: scale(1.2);
+}
+
+#volume-slider::-moz-range-thumb {
+    width: 12px;
+    height: 12px;
+    background: #eee;
+    cursor: pointer;
+    border-radius: 50%;
+    border: none;
+}
+
+
+#fullscreen-btn {
+    margin-left: 0;
 }
 
 
