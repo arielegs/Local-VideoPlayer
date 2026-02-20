@@ -5,7 +5,7 @@ const expressApp = express();
 
 expressApp.use(express.json());
 
-const { app } = require('electron');
+const { app, dialog } = require('electron');
 
 // Determine if we are running in development or production
 // In packaged apps (electron-builder), __dirname is inside app.asar which is read-only.
@@ -41,9 +41,9 @@ function loadConfig() {
     if (fs.existsSync(CONFIG_FILE)) {
         try {
             return JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
-        } catch (e) { return { "video_directory": "./videos" }; }
+        } catch (e) { return { "video_directory": "" }; }
     }
-    return { "video_directory": "./videos" };
+    return { "video_directory": "" };
 }
 
 function saveProgress(videoPath, timestamp) {
@@ -160,7 +160,14 @@ expressApp.post('/api/config', (req, res) => {
 // Videos API
 expressApp.get('/api/videos', (req, res) => {
     const config = loadConfig();
-    const directory = config.video_directory || '.';
+    const directory = config.video_directory;
+    
+    // If no directory is set, return empty list instead of defaulting to root
+    if (!directory) {
+        res.json([]);
+        return;
+    }
+
     const absDirectory = path.resolve(directory); // Ensure absolute before check
     if (!fs.existsSync(absDirectory)) {
         res.json([]);
@@ -204,10 +211,32 @@ expressApp.get('/api/last_played', (req, res) => {
     }
 });
 
+expressApp.post('/api/choose-directory', async (req, res) => {
+    try {
+        const result = await dialog.showOpenDialog({
+            properties: ['openDirectory']
+        });
+
+        if (!result.canceled && result.filePaths.length > 0) {
+            res.json({ path: result.filePaths[0] });
+        } else {
+            res.json({ canceled: true });
+        }
+    } catch (err) {
+        console.error('Error opening dialog:', err);
+        res.status(500).json({ error: 'Failed to open dialog' });
+    }
+});
+
 // Serve Video Files
 expressApp.get(/^\/video\/(.*)/, (req, res) => {
     const config = loadConfig();
-    const videoDir = path.resolve(config.video_directory || '.');
+    // If no directory is configured, we shouldn't serve files from root by default for security
+    if (!config.video_directory) {
+         res.status(404).send('No video directory configured');
+         return;
+    }
+    const videoDir = path.resolve(config.video_directory);
     const filename = req.params[0]; // Captures the rest of the path
 
     // Security check: ensure the resolved path is within videoDir
@@ -223,7 +252,7 @@ expressApp.get(/^\/video\/(.*)/, (req, res) => {
 
 function startServer(port) {
     if (!fs.existsSync(CONFIG_FILE)) {
-        fs.writeFileSync(CONFIG_FILE, JSON.stringify({"video_directory": "./videos"}, null, 4));
+        fs.writeFileSync(CONFIG_FILE, JSON.stringify({"video_directory": ""}, null, 4));
     }
     
     const server = expressApp.listen(port, '127.0.0.1', () => {

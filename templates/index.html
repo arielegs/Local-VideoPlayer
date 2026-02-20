@@ -63,9 +63,11 @@
         <div class="modal-content">
             <span class="close">&times;</span>
             <h3>Settings</h3>
-            <label for="video-dir-input">Video Directory Path:</label>
-            <input type="text" id="video-dir-input" placeholder="C:/Users/Videos">
-            <button id="save-settings">Save</button>
+            <div class="setting-row">
+                <input type="text" id="video-dir-input" placeholder="Select or enter path...">
+                <button id="browse-btn" class="secondary-btn">Browse...</button>
+            </div>
+            <button id="save-settings" class="primary-btn">Save</button>
         </div>
     </div>
 

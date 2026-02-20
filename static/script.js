@@ -5,9 +5,22 @@ document.addEventListener('DOMContentLoaded', () => {
     const btn = document.getElementById("folder-btn");
     const span = document.getElementsByClassName("close")[0];
     const saveSettings = document.getElementById("save-settings");
+    const browseBtn = document.getElementById("browse-btn");
     const dirInput = document.getElementById("video-dir-input");
     
     let currentVideoPath = null;
+    
+    // Browse Button Click
+    browseBtn.onclick = function() {
+        fetch('/api/choose-directory', { method: 'POST' })
+            .then(res => res.json())
+            .then(data => {
+                if (data.path) {
+                    dirInput.value = data.path;
+                }
+            })
+            .catch(err => console.error("Error opening dialog:", err));
+    }
     
     // Fetch video list
     function loadVideos() {
