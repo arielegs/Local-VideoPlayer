@@ -1,9 +1,13 @@
-name: Build Electron App (Dev)
+name: Build Electron App
 
 on:
   push:
+    # Run on all pushes to branches (for artifacts) AND tags (for releases)
     branches:
       - dev
+      - main
+    tags:
+      - 'v*' # Triggers on tags that start with 'v', e.g., v1.0.0
 
 jobs:
   build:
@@ -21,19 +25,16 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20' # Using a recent LTS version of Node
+          node-version: '20'
 
       - name: Install dependencies
         run: npm install
 
-      # FIX 1: Install libfuse2 on Linux so AppImage can build successfully
       - name: Install System dependencies (Linux)
         if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
           sudo apt-get install -y libfuse2
-
-      # FIX 2: Pass GH_TOKEN to the build steps
       
       # Build macOS (.dmg)
       - name: Build for macOS
@@ -56,7 +57,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # Upload the generated files so you can download them
+      # Keep the ZIP artifacts for branch pushes
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -67,3 +68,16 @@ jobs:
             dist/*.AppImage
             dist/*.exe
           if-no-files-found: warn
+
+      # Upload raw, unzipped files to GitHub Releases IF this push is a tag
+      - name: Release to GitHub
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            dist/*.dmg
+            dist/*.deb
+            dist/*.AppImage
+            dist/*.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
