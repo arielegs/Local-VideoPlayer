@@ -1,0 +1,54 @@
+name: Build Electron App (Dev)
+
+on:
+  push:
+    branches:
+      - dev
+
+jobs:
+  build:
+    # Use a matrix strategy to run jobs on Windows, macOS, and Linux
+    strategy:
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
+    
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20' # Using a recent LTS version of Node
+
+      - name: Install dependencies
+        run: npm install
+
+      # Build macOS (.dmg)
+      - name: Build for macOS
+        if: matrix.os == 'macos-latest'
+        run: npm run build:mac
+
+      # Build Linux (.deb and .AppImage)
+      - name: Build for Linux
+        if: matrix.os == 'ubuntu-latest'
+        run: npm run build:linux
+
+      # Build Windows (.exe)
+      - name: Build for Windows
+        if: matrix.os == 'windows-latest'
+        run: npm run build:win
+
+      # Upload the generated files so you can download them
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: LocalVideoPlayer-${{ matrix.os }}
+          path: |
+            dist/*.dmg
+            dist/*.deb
+            dist/*.AppImage
+            dist/*.exe
+          if-no-files-found: warn
