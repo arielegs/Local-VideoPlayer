@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Local Video Player</title>
     <!-- Force CSS refresh -->
-    <link rel="stylesheet" href="/static/style.css?v=14">
+    <link rel="stylesheet" href="/static/style.css?v=15">
 </head>
 <body>
     <div class="container">
@@ -14,6 +14,9 @@
             <div class="header">
                 <h2>Videos</h2>
                 <button id="folder-btn" title="Change Video Folder">📁</button>
+            </div>
+            <div class="search-container">
+                <input type="text" id="search-input" placeholder="Search videos...">
             </div>
             <div id="video-list" class="video-list">
                 <!-- Videos will be populated here -->
@@ -44,6 +47,8 @@
 
                         <span id="time-display">0:00 / 0:00</span>
                         
+                        <button id="speed-btn" class="speed-btn" title="Playback Speed">1x</button>
+                        
                         <div class="spacer"></div>
                         
                         <button id="fullscreen-btn" title="Fullscreen">
@@ -72,6 +77,6 @@
     </div>
 
     <!-- Force JS refresh -->
-    <script src="/static/script.js?v=12"></script>
+    <script src="/static/script.js?v=13"></script>
 </body>
 </html>

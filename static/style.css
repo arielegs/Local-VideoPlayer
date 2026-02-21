@@ -516,6 +516,37 @@ button#save-settings:hover {
     width: 100%;
 }
 
-.primary-btn:hover {
-    background: #4a00e0;
+.search-container {
+    padding: 8px 10px;
+    border-bottom: 1px solid #333;
 }
+
+.search-container input {
+    width: 100%;
+    padding: 7px 10px;
+    margin: 0;
+    background-color: #252525;
+    border: 1px solid #3a3a3a;
+    color: #e0e0e0;
+    border-radius: 4px;
+    font-size: 0.85rem;
+    box-sizing: border-box;
+    outline: none;
+}
+
+.search-container input:focus {
+    border-color: #5c5c5c;
+}
+
+.speed-btn {
+    font-size: 12px !important;
+    font-weight: 600;
+    width: auto !important;
+    min-width: 36px;
+    border-radius: 4px !important;
+    padding: 4px 6px !important;
+    height: auto !important;
+    letter-spacing: 0.5px;
+}
+
+

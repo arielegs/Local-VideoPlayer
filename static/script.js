@@ -10,6 +10,17 @@ document.addEventListener('DOMContentLoaded', () => {
     
     let currentVideoPath = null;
     
+    const searchInput = document.getElementById('search-input');
+    
+    // Search / filter video list
+    searchInput.addEventListener('input', () => {
+        const query = searchInput.value.toLowerCase();
+        document.querySelectorAll('.video-item').forEach(item => {
+            const matches = item.dataset.path.toLowerCase().includes(query);
+            item.style.display = matches ? '' : 'none';
+        });
+    });
+
     // Browse Button Click
     browseBtn.onclick = function() {
         fetch('/api/choose-directory', { method: 'POST' })
@@ -211,6 +222,21 @@ document.addEventListener('DOMContentLoaded', () => {
     let controlsTimeout;
 
     const muteBtn = document.getElementById('mute-btn');
+    const speedBtn = document.getElementById('speed-btn');
+
+    // Playback speed control
+    const speeds = [0.5, 0.75, 1, 1.25, 1.5, 2];
+    let currentSpeedIdx = speeds.indexOf(1); // default 1x
+
+    function setSpeed(idx) {
+        currentSpeedIdx = (idx + speeds.length) % speeds.length;
+        videoPlayer.playbackRate = speeds[currentSpeedIdx];
+        speedBtn.textContent = `${speeds[currentSpeedIdx]}x`;
+    }
+
+    speedBtn.addEventListener('click', () => {
+        setSpeed(currentSpeedIdx + 1);
+    });
     
     // Toggle Play/Pause
     function togglePlay() {
@@ -343,7 +369,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Reset Play button on end
     videoPlayer.addEventListener('ended', () => {
-        playPauseBtn.textContent = '⏵';
+        playPauseBtn.querySelector('path').setAttribute('d', 'M8 5v14l11-7z');
+        // Auto-play next visible video
+        const visibleItems = Array.from(document.querySelectorAll('.video-item'))
+            .filter(el => el.style.display !== 'none');
+        const currentIdx = visibleItems.findIndex(el => el.dataset.path === currentVideoPath);
+        if (currentIdx !== -1 && currentIdx < visibleItems.length - 1) {
+            const nextItem = visibleItems[currentIdx + 1];
+            playVideo(nextItem.dataset.path, nextItem);
+        }
     });
 
     // Keyboard Shortcuts
@@ -372,6 +406,16 @@ document.addEventListener('DOMContentLoaded', () => {
             case 'm':
                 e.preventDefault();
                 videoPlayer.muted = !videoPlayer.muted;
+                break;
+            case '>':
+            case '.':
+                e.preventDefault();
+                setSpeed(currentSpeedIdx + 1);
+                break;
+            case '<':
+            case ',':
+                e.preventDefault();
+                setSpeed(currentSpeedIdx - 1);
                 break;
         }
     });
