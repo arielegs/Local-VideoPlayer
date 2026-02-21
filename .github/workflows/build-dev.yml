@@ -23,8 +23,15 @@ jobs:
         with:
           node-version: '20' # Using a recent LTS version of Node
 
-      - name: Install dependencies
+      - name: Install Node dependencies
         run: npm install
+
+      # FIX: Install libfuse2 on Linux so AppImage can build successfully
+      - name: Install System dependencies (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libfuse2
 
       # Build macOS (.dmg)
       - name: Build for macOS
