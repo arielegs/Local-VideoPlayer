@@ -23,30 +23,38 @@ jobs:
         with:
           node-version: '20' # Using a recent LTS version of Node
 
-      - name: Install Node dependencies
+      - name: Install dependencies
         run: npm install
 
-      # FIX: Install libfuse2 on Linux so AppImage can build successfully
+      # FIX 1: Install libfuse2 on Linux so AppImage can build successfully
       - name: Install System dependencies (Linux)
         if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
           sudo apt-get install -y libfuse2
 
+      # FIX 2: Pass GH_TOKEN to the build steps
+      
       # Build macOS (.dmg)
       - name: Build for macOS
         if: matrix.os == 'macos-latest'
         run: npm run build:mac
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # Build Linux (.deb and .AppImage)
       - name: Build for Linux
         if: matrix.os == 'ubuntu-latest'
         run: npm run build:linux
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # Build Windows (.exe)
       - name: Build for Windows
         if: matrix.os == 'windows-latest'
         run: npm run build:win
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # Upload the generated files so you can download them
       - name: Upload Artifacts
