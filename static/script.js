@@ -7,9 +7,45 @@ document.addEventListener('DOMContentLoaded', () => {
     const saveSettings = document.getElementById("save-settings");
     const browseBtn = document.getElementById("browse-btn");
     const dirInput = document.getElementById("video-dir-input");
+    const transcodeToggle = document.getElementById("transcode-toggle");
     
     let currentVideoPath = null;
-    
+    let isTranscoding = false;
+
+    // Load saved preference
+    const savedTranscode = localStorage.getItem('transcodePref');
+    if (savedTranscode === 'true') {
+        transcodeToggle.checked = true;
+        isTranscoding = true;
+    }
+
+    // Toggle listener for immediate effect
+    transcodeToggle.addEventListener('change', () => {
+        // Save progress BEFORE updating global state logic
+        if (currentVideoPath) {
+            let t = videoPlayer.currentTime;
+            // If switching OFF (new checked=false), old state was transcoding (true)
+            if (!transcodeToggle.checked) {
+                t += streamOffset;
+            }
+            saveProgress(currentVideoPath, t);
+            
+            // Pause so playVideo's internal save check sees paused and skips saving
+            videoPlayer.pause();
+        }
+
+        // Update state
+        isTranscoding = transcodeToggle.checked;
+        localStorage.setItem('transcodePref', isTranscoding);
+        
+        // Reload video if one was selected
+        if (currentVideoPath) {
+            const items = Array.from(document.querySelectorAll('.video-item'));
+            const item = items.find(el => el.dataset.path === currentVideoPath);
+            playVideo(currentVideoPath, item);
+        }
+    });
+
     // Browse Button Click
     browseBtn.onclick = function() {
         fetch('/api/choose-directory', { method: 'POST' })
@@ -57,7 +93,8 @@ document.addEventListener('DOMContentLoaded', () => {
         // Remove existing indicators
         document.querySelectorAll('.last-played-indicator').forEach(el => el.remove());
         
-        // Find the element
+        // Find the element (dataset.path uses spaces in filename, not encoded)
+        // Ensure path matches dataset
         const items = Array.from(document.querySelectorAll('.video-item'));
         const item = items.find(el => el.dataset.path === path);
         
@@ -66,8 +103,7 @@ document.addEventListener('DOMContentLoaded', () => {
             indicator.className = 'last-played-indicator';
             indicator.textContent = ' 👁️ Last Played';
             item.appendChild(indicator);
-            // Optional: Scroll to it
-            // item.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            item.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
     }
     
@@ -75,15 +111,19 @@ document.addEventListener('DOMContentLoaded', () => {
     function playVideo(relPath, element) {
         // Save progress of the current video before switching
         if (currentVideoPath && !videoPlayer.paused) {
-            saveProgress(currentVideoPath, videoPlayer.currentTime);
+            let currentTime = videoPlayer.currentTime;
+            if (isTranscoding) currentTime += streamOffset;
+            saveProgress(currentVideoPath, currentTime);
         }
         
+        // Reset states
+        isTranscoding = transcodeToggle.checked;
+        streamOffset = 0;
+        totalDuration = 0;
+        
         // Update "Last Played" indicator immediately
-        // We know we are about to play this, so mark it
-        // Remove old indicator
         document.querySelectorAll('.last-played-indicator').forEach(el => el.remove());
         
-        // Add new indicator to current element if it doesn't have one
         if (element) {
              const indicator = document.createElement('span');
              indicator.className = 'last-played-indicator';
@@ -99,45 +139,71 @@ document.addEventListener('DOMContentLoaded', () => {
         currentVideoPath = relPath;
         const encodedPath = encodeURIComponent(relPath);
 
-        
-        // Fetch saved progress
-        fetch(`/api/progress/${encodedPath}`)
+        // Fetch Metadata for Duration (Only needed for Transcoding really, but good to have)
+        fetch(`/api/metadata/${encodedPath}`)
             .then(res => res.json())
-            .then(data => {
-                // If checking another video, ignore this result
-                if (currentVideoPath !== relPath) return;
+            .then(meta => {
+                totalDuration = meta.duration || 0;
+                
+                // Fetch saved progress
+                fetch(`/api/progress/${encodedPath}`)
+                    .then(res => res.json())
+                    .then(data => {
+                        // If checking another video, ignore this result
+                        if (currentVideoPath !== relPath) return;
 
-                const savedTime = data.timestamp;
-                const videoUrl = `/video/${encodedPath}`;
-                
-                // Only change src if it's different (or to force reload)
-                // But here we always want to load the new one
-                videoPlayer.src = videoUrl;
-                
-                // Clean up previous event listener if possible (though onloadedmetadata overwrite handles it)
-                videoPlayer.onloadedmetadata = () => {
-                   if (savedTime > 0) {
-                        videoPlayer.currentTime = savedTime;
-                    }
-                    videoPlayer.title = relPath;
-                    document.getElementById('current-video-title').innerText = relPath;
-                    videoPlayer.play().catch(e => console.log("Auto-play prevented:", e));
-                };
-            });
+                        let savedTime = data.timestamp || 0;
+
+                        if (isTranscoding) {
+                             // Start stream from saved position
+                             streamOffset = savedTime;
+                             const videoUrl = `/stream/${encodedPath}?startTime=${savedTime}`;
+                             videoPlayer.src = videoUrl;
+                             videoPlayer.currentTime = 0; // Stream starts here
+                        } else {
+                             const videoUrl = `/video/${encodedPath}`;
+                             videoPlayer.src = videoUrl;
+                             // We set currentTime in loadedmetadata
+                        }
+                        
+                        videoPlayer.onloadedmetadata = () => {
+                           if (!isTranscoding && savedTime > 0) {
+                                videoPlayer.currentTime = savedTime;
+                            }
+                            
+                            videoPlayer.title = relPath;
+                            document.getElementById('current-video-title').innerText = relPath + (isTranscoding ? " (Compatibility Mode)" : "");
+                            videoPlayer.play().catch(e => console.log("Auto-play prevented:", e));
+                        };
+                    });
+            }); 
     }
 
     // Save progress periodically
     setInterval(() => {
         if (!videoPlayer.paused && currentVideoPath) {
-            saveProgress();
+            let t = videoPlayer.currentTime;
+            if (isTranscoding) t += streamOffset;
+            saveProgress(undefined, t);
         }
     }, 5000);
     
     // Save when paused or page hidden
-    videoPlayer.addEventListener('pause', saveProgress);
-    window.addEventListener('beforeunload', () => saveProgress());
+    // Note: event listeners pass event object as first arg, handle that in saveProgress
+    videoPlayer.addEventListener('pause', () => {
+         let t = videoPlayer.currentTime;
+         if (isTranscoding) t += streamOffset;
+         saveProgress(undefined, t);
+    });
+    
+    window.addEventListener('beforeunload', () => {
+         let t = videoPlayer.currentTime;
+         if (isTranscoding) t += streamOffset;
+         saveProgress(undefined, t);
+    });
     
     function saveProgress(path, time) {
+        // ... (rest is same)
         // Check if called as event handler
         if (path && path.type) { // Event object
             path = undefined;
@@ -209,6 +275,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const playerContainer = document.getElementById('player-container');
     const controls = document.getElementById('video-controls');
     let controlsTimeout;
+    let streamOffset = 0;
+    let totalDuration = 0;
 
     const muteBtn = document.getElementById('mute-btn');
     
@@ -278,12 +346,27 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Update Progress Bar & Time
     videoPlayer.addEventListener('timeupdate', () => {
-        if (!videoPlayer.duration) return;
-        const percent = (videoPlayer.currentTime / videoPlayer.duration) * 100;
+        let currentTime = videoPlayer.currentTime;
+        let duration = videoPlayer.duration;
+        
+        if (isTranscoding) {
+             duration = totalDuration;
+             currentTime = streamOffset + videoPlayer.currentTime;
+             
+             // Sanity check
+             if (Math.abs(duration - currentTime) < 1) {
+                 currentTime = duration;
+             }
+        }
+
+        if (!duration && !isTranscoding) return; // Allow 0 duration for stream start?
+        if (!duration) duration = 1; // prevent div by zero
+
+        const percent = (currentTime / duration) * 100;
         progressBar.style.width = `${percent}%`;
         
-        const current = formatTime(videoPlayer.currentTime);
-        const total = formatTime(videoPlayer.duration);
+        const current = formatTime(currentTime);
+        const total = formatTime(duration);
         timeDisplay.textContent = `${current} / ${total}`;
     });
 
@@ -299,7 +382,25 @@ document.addEventListener('DOMContentLoaded', () => {
         // Clamp between 0 and 1
         pos = Math.max(0, Math.min(1, pos));
         
-        videoPlayer.currentTime = pos * videoPlayer.duration;
+        let seekTime;
+       
+        if (isTranscoding) {
+            seekTime = pos * totalDuration;
+            streamOffset = seekTime;
+            const encodedPath = encodeURIComponent(currentVideoPath);
+            videoPlayer.src = `/stream/${encodedPath}?startTime=${seekTime}`;
+            
+            // Wait for load start effectively
+            videoPlayer.onloadedmetadata = () => {
+                videoPlayer.play();
+                // Ensure UI aligns
+                progressBar.style.width = `${pos * 100}%`;
+            };
+        } else {
+             if (videoPlayer.duration) {
+                videoPlayer.currentTime = pos * videoPlayer.duration;
+             }
+        }
     });
 
     // Time Tooltip
@@ -310,10 +411,17 @@ document.addEventListener('DOMContentLoaded', () => {
         const clickX = e.clientX - rect.left - padding;
         
         let pos = clickX / visualWidth;
-        const hoverTime = pos * videoPlayer.duration;
+        
+        let hoverTime;
+        if (isTranscoding && totalDuration) {
+             hoverTime = pos * totalDuration;
+        } else {
+             hoverTime = pos * videoPlayer.duration;
+        }
         
         // Clamp and format
-        const safeTime = Math.max(0, Math.min(hoverTime, videoPlayer.duration));
+        const maxTime = (isTranscoding && totalDuration) ? totalDuration : (videoPlayer.duration || 0);
+        const safeTime = Math.max(0, Math.min(hoverTime, maxTime));
         timeTooltip.textContent = formatTime(safeTime);
         
         // Position the tooltip
@@ -334,10 +442,8 @@ document.addEventListener('DOMContentLoaded', () => {
     fullscreenBtn.addEventListener('click', () => {
         if (!document.fullscreenElement) {
             playerContainer.requestFullscreen();
-            fullscreenBtn.textContent = '⛶'; // Exit icon?
         } else {
             document.exitFullscreen();
-            fullscreenBtn.textContent = '⛶';
         }
     });
 
@@ -359,11 +465,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 break;
             case 'ArrowRight':
                 e.preventDefault();
-                videoPlayer.currentTime = Math.min(videoPlayer.duration, videoPlayer.currentTime + 5);
+                handleKeys(5);
                 break;
             case 'ArrowLeft':
                 e.preventDefault();
-                videoPlayer.currentTime = Math.max(0, videoPlayer.currentTime - 5);
+                handleKeys(-5);
                 break;
             case 'f':
                 e.preventDefault();
@@ -375,7 +481,53 @@ document.addEventListener('DOMContentLoaded', () => {
                 break;
         }
     });
+    let seekDebounce = null;
+    let pendingSeekTime = null;
 
+    function handleKeys(delta) {
+        if (!isTranscoding) {
+            let t = videoPlayer.currentTime + delta;
+            t = Math.max(0, Math.min(t, videoPlayer.duration || 0));
+            videoPlayer.currentTime = t;
+            return;
+        }
+
+        // Transcoding seek logic
+        if (pendingSeekTime === null) {
+            // First press: base off "stream logic time"
+            // We need to use streamOffset + currentTime, but if we just sought, current time might be 0.
+            pendingSeekTime = streamOffset + videoPlayer.currentTime;
+        }
+    
+        // Apply delta
+        pendingSeekTime += delta;
+        pendingSeekTime = Math.max(0, Math.min(pendingSeekTime, totalDuration));
+            
+        // Visual feedback immediately
+        const percent = (pendingSeekTime / totalDuration) * 100;
+        progressBar.style.width = `${percent}%`;
+        timeDisplay.textContent = `${formatTime(pendingSeekTime)} / ${formatTime(totalDuration)}`;
+        
+        // Show loading cursor
+        playerContainer.style.cursor = 'wait';
+        
+        // Clear previous scheduled reload
+        if (seekDebounce) clearTimeout(seekDebounce);
+        
+        // Wait 300ms for user to stop pressing keys - faster reaction
+        seekDebounce = setTimeout(() => {
+            streamOffset = pendingSeekTime;
+            const encodedPath = encodeURIComponent(currentVideoPath);
+            
+            videoPlayer.src = `/stream/${encodedPath}?startTime=${pendingSeekTime}`;
+            videoPlayer.play().catch(e => {});
+
+            // Reset pending state
+            pendingSeekTime = null;
+            playerContainer.style.cursor = 'default';
+        }, 300); 
+    }
+// Remove duplicate seek function and variables
     // Double Click Fullscreen
     playerContainer.addEventListener('dblclick', (e) => {
         // Prevent triggering the single click play/pause if possible, or just accept the toggle

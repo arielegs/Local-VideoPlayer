@@ -1,6 +1,15 @@
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
+const { spawn } = require('child_process');
+const ffmpeg = require('fluent-ffmpeg');
+const ffmpegInstaller = require('@ffmpeg-installer/ffmpeg');
+const ffprobeInstaller = require('@ffprobe-installer/ffprobe');
+
+// Set ffmpeg path
+ffmpeg.setFfmpegPath(ffmpegInstaller.path);
+ffmpeg.setFfprobePath(ffprobeInstaller.path);
+
 const expressApp = express();
 
 expressApp.use(express.json());
@@ -237,7 +246,92 @@ expressApp.post('/api/choose-directory', async (req, res) => {
     }
 });
 
-// Serve Video Files
+// Open in MPV API Removed
+
+expressApp.get(/^\/api\/metadata\/(.*)/, (req, res) => {
+    const config = loadConfig();
+    const videoPath = decodeURIComponent(req.params[0]);
+    const fullPath = path.join(config.video_directory, videoPath);
+
+    if (!fs.existsSync(fullPath)) {
+        return res.json({ duration: 0 });
+    }
+
+    ffmpeg.ffprobe(fullPath, (err, metadata) => {
+        if (err) {
+            console.error("FFprobe error:", err);
+            return res.json({ duration: 0 });
+        }
+        // ffprobe returns duration in seconds as a number usually, but let's be safe
+        const d = metadata && metadata.format && metadata.format.duration;
+        res.json({ duration: parseFloat(d) || 0 });
+    });
+});
+
+// Transcoded Video Stream (for wide compatibility)
+// This will transcode audio to AAC and copy video if possible, or transcode both
+expressApp.get(/^\/stream\/(.*)/, (req, res) => {
+    const config = loadConfig();
+    if (!config.video_directory) {
+         res.status(404).send('No video directory');
+         return;
+    }
+    const videoDir = path.resolve(config.video_directory);
+    const filename = req.params[0];
+    const fullPath = path.join(videoDir, filename);
+
+    if (!fs.existsSync(fullPath)) {
+        res.status(404).send('Not found');
+        return;
+    }
+
+    // Basic transcoding parameters
+    // We output Matroska container because it's streamable and robust
+    // Or fragmented MP4. Matroska with VP8/Vorbis is safest for 'mpv like' support in browser (WebM),
+    // but slow.
+    // H.264 + AAC in MP4 is best.
+    
+    // Check range header for seeking
+    const range = req.headers.range;
+    // FFMPEG searching is tricky with range requests.
+    // For now, let's just stream from start or use basic seeking if 'startTime' query param is passed.
+    
+    const startTime = req.query.startTime || 0;
+
+    res.contentType('video/mp4');
+
+    // Setup FFMpeg
+    const command = ffmpeg(fullPath);
+
+    if (startTime > 0) {
+        command.seekInput(startTime);
+    }
+
+    command
+        .format('mp4')
+        .videoCodec('libx264') // Ensure H.264
+        .audioCodec('aac')     // Ensure AAC (Solve audio issues)
+        .audioChannels(2)      // 2.0 Stereo usually safest
+        .outputOptions([
+             '-movflags frag_keyframe+empty_moov', // Vital for streaming MP4
+             '-preset ultrafast',                 // Low CPU usage
+             '-tune zerolatency',                 // Reduce encoding latency
+             '-crf 23',                           // Decent quality
+             '-pix_fmt yuv420p',                  // Ensure pixel format compatibility
+             '-g 30'                              // Force keyframe every 30 frames (approx 1s) for faster seeking lock
+        ])
+        .on('start', (cmd) => {
+             console.log('Started ffmpeg:', cmd);
+        })
+        .on('error', (err) => {
+             if (err.message !== 'Output stream closed') {
+                 console.error('ffmpeg error:', err);
+             }
+        })
+        .pipe(res, { end: true });
+});
+
+// Serve Video Files (Direct Play)
 expressApp.get(/^\/video\/(.*)/, (req, res) => {
     const config = loadConfig();
     // If no directory is configured, we shouldn't serve files from root by default for security

@@ -27,10 +27,12 @@
       "output": "dist"
     },
     "linux": {
-      "target": ["AppImage", "deb"],
+      "target": [
+        "AppImage",
+        "deb"
+      ],
       "icon": "icon.png",
-      "category": "Video",
-      "maintainer": "arielegs <ArieLegs>"
+      "category": "Video"
     },
     "win": {
       "target": "nsis",
@@ -48,11 +50,6 @@
       "target": "dmg",
       "icon": "icon.png"
     },
-    "linux": {
-      "target": ["AppImage", "deb"],
-      "icon": "icon.png",
-      "category": "Video"
-    },
     "files": [
       "**/*",
       "!.*",
@@ -67,8 +64,11 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@ffmpeg-installer/ffmpeg": "^1.1.0",
+    "@ffprobe-installer/ffprobe": "^2.1.2",
     "cors": "^2.8.6",
-    "express": "^5.2.1"
+    "express": "^5.2.1",
+    "fluent-ffmpeg": "^2.1.3"
   },
   "devDependencies": {
     "electron": "^40.6.0",
