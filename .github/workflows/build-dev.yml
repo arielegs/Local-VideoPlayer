@@ -70,11 +70,11 @@ jobs:
           if-no-files-found: warn
 
       # Upload raw, unzipped files to GitHub Releases IF this push is a tag
-      - name: Release to GitHub
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v1
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
         with:
-          files: |
+          name: LocalVideoPlayer-${{ matrix.os }}.zip  # <-- Added .zip here!
+          path: |
             dist/*.dmg
             dist/*.deb
             dist/*.AppImage
