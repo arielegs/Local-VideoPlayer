@@ -2,6 +2,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Elements ---
     const videoList = document.getElementById('video-list');
     const videoPlayer = document.getElementById('video-player');
+    const seekOverlay = document.getElementById('seek-overlay');
     
     // Modal & Config
     const modal = document.getElementById('settings-modal');
@@ -555,6 +556,31 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    function captureFrame() {
+        if (!seekOverlay) return;
+
+        // Only capture a new frame if we have valid video data to show.
+        // If we are already seeking (overlay visible) or video is not ready, keep the old frame.
+        if (seekOverlay.style.display !== 'block' && videoPlayer.readyState >= 2) {
+             seekOverlay.width = videoPlayer.videoWidth;
+             seekOverlay.height = videoPlayer.videoHeight;
+             const ctx = seekOverlay.getContext('2d');
+             ctx.drawImage(videoPlayer, 0, 0, seekOverlay.width, seekOverlay.height);
+             seekOverlay.style.display = 'block';
+        }
+    }
+
+    function clearFrame() {
+        if (seekOverlay) {
+            seekOverlay.style.display = 'none';
+        }
+    }
+    
+    // Add event listener to clear overlay when new video starts playing
+    videoPlayer.addEventListener('loadeddata', clearFrame);
+    // Also clear on error just in case
+    videoPlayer.addEventListener('error', clearFrame);
+
     function handleSeek(e, commit) {
         const rect = progressBarContainer.getBoundingClientRect();
         const maxDuration = (isTranscoding && totalDuration) ? totalDuration : (videoPlayer.duration || 0);
@@ -564,6 +590,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const newTime = pos * maxDuration;
         
         progressBar.style.width = `${pos * 100}%`;
+        // Optimistically update time display
         timeDisplay.textContent = `${formatTime(newTime)} / ${formatTime(maxDuration)}`;
         
         if (commit) {
@@ -571,20 +598,26 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Buffer seek
                 streamOffset = newTime;
                 
-                // Clear existing tracks before changing source
+                // Keep the current frame visible
+                captureFrame();
+                
+                // Clear existing tracks
                 removeSubtitleTracks();
 
                 const encodedPath = encodeURIComponent(currentVideoPath);
                 let url = `/stream/${encodedPath}?startTime=${newTime}&vCodec=${currentVideoCodec || ''}`;
                 if(currentAudioTrack !== null) url += `&audioIndex=${currentAudioTrack}`;
+                
                 videoPlayer.src = url;
                 
-                // Re-enable subtitles for new segment
                 if (currentSubtitleTrack !== -1) {
                      enableSubtitle(currentSubtitleTrack, undefined, encodedPath);
                 }
 
-                videoPlayer.play();
+                // Attempt to play immediately
+                const p = videoPlayer.play();
+                if (p) p.catch(e => console.log("Seek play suppressed", e));
+
             } else {
                 videoPlayer.currentTime = newTime;
             }
@@ -741,12 +774,19 @@ document.addEventListener('DOMContentLoaded', () => {
         let newTime = currentTime + seconds;
         newTime = Math.max(0, Math.min(duration, newTime));
         
+        // Optimistic UI update
+        progressBar.style.width = `${(newTime / (duration || 1)) * 100}%`;
+        timeDisplay.textContent = `${formatTime(newTime)} / ${formatTime(duration)}`;
+
         if (isTranscoding) {
             // For transcoding, we update the stream offset and reload
             // This mirrors the handleSeek logic for consistency
             streamOffset = newTime;
             
             removeSubtitleTracks();
+            
+            // Keep last frame
+            captureFrame();
 
             const encodedPath = encodeURIComponent(currentVideoPath);
             let url = `/stream/${encodedPath}?startTime=${newTime}&vCodec=${currentVideoCodec || ''}`;
@@ -757,7 +797,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (currentSubtitleTrack !== -1) {
                  enableSubtitle(currentSubtitleTrack, undefined, encodedPath);
             }
-            videoPlayer.play();
+            videoPlayer.play().catch(e => console.log("Seek play suppressed", e));
         } else {
             videoPlayer.currentTime = newTime;
         }
