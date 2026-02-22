@@ -260,11 +260,27 @@ expressApp.get(/^\/api\/metadata\/(.*)/, (req, res) => {
     ffmpeg.ffprobe(fullPath, (err, metadata) => {
         if (err) {
             console.error("FFprobe error:", err);
-            return res.json({ duration: 0 });
+            return res.json({ duration: 0, videoCodec: null, audioCodec: null });
         }
         // ffprobe returns duration in seconds as a number usually, but let's be safe
         const d = metadata && metadata.format && metadata.format.duration;
-        res.json({ duration: parseFloat(d) || 0 });
+        
+        let vCodec = null;
+        let aCodec = null;
+
+        if (metadata && metadata.streams) {
+            const videoStream = metadata.streams.find(s => s.codec_type === 'video');
+            if (videoStream) vCodec = videoStream.codec_name;
+            
+            const audioStream = metadata.streams.find(s => s.codec_type === 'audio');
+            if (audioStream) aCodec = audioStream.codec_name;
+        }
+
+        res.json({ 
+            duration: parseFloat(d) || 0,
+            videoCodec: vCodec,
+            audioCodec: aCodec
+        });
     });
 });
 
@@ -272,63 +288,80 @@ expressApp.get(/^\/api\/metadata\/(.*)/, (req, res) => {
 // This will transcode audio to AAC and copy video if possible, or transcode both
 expressApp.get(/^\/stream\/(.*)/, (req, res) => {
     const config = loadConfig();
+    const videoPath = decodeURIComponent(req.params[0]);
     if (!config.video_directory) {
          res.status(404).send('No video directory');
          return;
     }
     const videoDir = path.resolve(config.video_directory);
-    const filename = req.params[0];
-    const fullPath = path.join(videoDir, filename);
+    const fullPath = path.join(videoDir, videoPath);
 
     if (!fs.existsSync(fullPath)) {
         res.status(404).send('Not found');
         return;
     }
 
-    // Basic transcoding parameters
-    // We output Matroska container because it's streamable and robust
-    // Or fragmented MP4. Matroska with VP8/Vorbis is safest for 'mpv like' support in browser (WebM),
-    // but slow.
-    // H.264 + AAC in MP4 is best.
-    
-    // Check range header for seeking
-    const range = req.headers.range;
-    // FFMPEG searching is tricky with range requests.
-    // For now, let's just stream from start or use basic seeking if 'startTime' query param is passed.
-    
     const startTime = req.query.startTime || 0;
+    const clientVideoCodec = req.query.vCodec; // Optimization: client tells us codec
 
-    res.contentType('video/mp4');
+    const startStream = (vCodecName) => {
+         let vCodec = 'libx264';
+         let additionalOptions = [
+             '-preset ultrafast',
+             '-tune zerolatency',
+             '-crf 23',
+             '-pix_fmt yuv420p',
+             '-g 30'
+         ];
+         
+         if (vCodecName === 'h264' || vCodecName === 'avc1') {
+              vCodec = 'copy';
+              additionalOptions = []; 
+         }
 
-    // Setup FFMpeg
-    const command = ffmpeg(fullPath);
+         res.contentType('video/mp4');
 
-    if (startTime > 0) {
-        command.seekInput(startTime);
-    }
+         const command = ffmpeg(fullPath);
 
-    command
-        .format('mp4')
-        .videoCodec('libx264') // Ensure H.264
-        .audioCodec('aac')     // Ensure AAC (Solve audio issues)
-        .audioChannels(2)      // 2.0 Stereo usually safest
-        .outputOptions([
-             '-movflags frag_keyframe+empty_moov', // Vital for streaming MP4
-             '-preset ultrafast',                 // Low CPU usage
-             '-tune zerolatency',                 // Reduce encoding latency
-             '-crf 23',                           // Decent quality
-             '-pix_fmt yuv420p',                  // Ensure pixel format compatibility
-             '-g 30'                              // Force keyframe every 30 frames (approx 1s) for faster seeking lock
-        ])
-        .on('start', (cmd) => {
-             console.log('Started ffmpeg:', cmd);
-        })
-        .on('error', (err) => {
-             if (err.message !== 'Output stream closed') {
-                 console.error('ffmpeg error:', err);
+         if (startTime > 0) {
+            command.seekInput(startTime);
+         }
+
+         command
+            .format('mp4')
+            .videoCodec(vCodec)
+            .audioCodec('aac')     
+            .audioChannels(2)
+            .outputOptions([
+                 '-movflags frag_keyframe+empty_moov', 
+                 ...additionalOptions
+            ])
+            .on('start', (cmd) => {
+                 // console.log('Started ffmpeg:', cmd);
+            })
+            .on('error', (err) => {
+                 if (err.message !== 'Output stream closed') {
+                     // console.error('ffmpeg error:', err);
+                 }
+            })
+            .pipe(res, { end: true });
+    };
+
+    if (clientVideoCodec) {
+        startStream(clientVideoCodec);
+    } else {
+        // Fallback to probing if client didn't send codec (e.g. direct URL access)
+        ffmpeg.ffprobe(fullPath, (err, metadata) => {
+             if (err) {
+                 console.error("Probe error", err);
+                 return res.sendStatus(500);
              }
-        })
-        .pipe(res, { end: true });
+             
+             const vStream = metadata.streams.find(s => s.codec_type === 'video');
+             const codec = vStream ? vStream.codec_name : null;
+             startStream(codec);
+        });
+    }
 });
 
 // Serve Video Files (Direct Play)

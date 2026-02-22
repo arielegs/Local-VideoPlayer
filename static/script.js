@@ -11,6 +11,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
     let currentVideoPath = null;
     let isTranscoding = false;
+    let currentVideoCodec = null; // Store codec info
 
     // Load saved preference
     const savedTranscode = localStorage.getItem('transcodePref');
@@ -108,7 +109,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     // Play video function
-    function playVideo(relPath, element) {
+    function playVideo(relPath, element, forceTranscode = false) {
         // Save progress of the current video before switching
         if (currentVideoPath && !videoPlayer.paused) {
             let currentTime = videoPlayer.currentTime;
@@ -117,7 +118,21 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         
         // Reset states
-        isTranscoding = transcodeToggle.checked;
+        // If forceTranscode is true (from error handler), force it.
+        // Otherwise adhere to toggle.
+        isTranscoding = forceTranscode || transcodeToggle.checked;
+
+        // Auto-detect compatibility requirement if not already forced/checked
+        if (!isTranscoding) {
+            const troubleExtensions = ['.mkv', '.avi', '.wmv', '.flv', '.mov', '.ts', '.m3u8'];
+            const format = relPath.substring(relPath.lastIndexOf('.')).toLowerCase();
+            if (troubleExtensions.includes(format)) {
+                 console.log("Auto-enabled compatibility mode for format:", format);
+                 isTranscoding = true;
+                 transcodeToggle.checked = true; // Sync UI
+            }
+        }
+
         streamOffset = 0;
         totalDuration = 0;
         
@@ -144,6 +159,7 @@ document.addEventListener('DOMContentLoaded', () => {
             .then(res => res.json())
             .then(meta => {
                 totalDuration = meta.duration || 0;
+                currentVideoCodec = meta.videoCodec; // Save codec
                 
                 // Fetch saved progress
                 fetch(`/api/progress/${encodedPath}`)
@@ -154,25 +170,54 @@ document.addEventListener('DOMContentLoaded', () => {
 
                         let savedTime = data.timestamp || 0;
 
-                        if (isTranscoding) {
-                             // Start stream from saved position
-                             streamOffset = savedTime;
-                             const videoUrl = `/stream/${encodedPath}?startTime=${savedTime}`;
-                             videoPlayer.src = videoUrl;
-                             videoPlayer.currentTime = 0; // Stream starts here
-                        } else {
-                             const videoUrl = `/video/${encodedPath}`;
-                             videoPlayer.src = videoUrl;
-                             // We set currentTime in loadedmetadata
-                        }
+                        const playSource = () => {
+                             if (isTranscoding) {
+                                  // Start stream from saved position
+                                  streamOffset = savedTime;
+                                  const videoUrl = `/stream/${encodedPath}?startTime=${savedTime}&vCodec=${currentVideoCodec || ''}`;
+                                  videoPlayer.src = videoUrl;
+                                  videoPlayer.currentTime = 0; // Stream starts here
+                             } else {
+                                  // Direct Play
+                                  const videoUrl = `/video/${encodedPath}`;
+                                  videoPlayer.src = videoUrl;
+                                  // Video might error out here if format bad
+                             }
+                        };
                         
+                        // Error handling wrapper for Direct Play fallback
+                        const errorHandler = (e) => {
+                             if (!isTranscoding) {
+                                  console.warn("Direct play failed, switching to compatibility mode...", e);
+                                  // Remove this listener to prevent loop if transcode fails too
+                                  videoPlayer.removeEventListener('error', errorHandler);
+                                  transcodeToggle.checked = true;
+                                  playVideo(relPath, element, true);
+                             }
+                        };
+                        
+                        // Reset error handlers
+                        videoPlayer.removeEventListener('error', errorHandler); // clean up old one potentially?
+                        // Actually we should just add it once per load
+                        videoPlayer.addEventListener('error', errorHandler, { once: true });
+
+                        playSource();
+                        
+                        // Define onloadedmetadata once
                         videoPlayer.onloadedmetadata = () => {
-                           if (!isTranscoding && savedTime > 0) {
+                           // Only seek for Direct Play initial load
+                           if (!isTranscoding && savedTime > 0 && Math.abs(videoPlayer.currentTime - savedTime) > 0.5) {
                                 videoPlayer.currentTime = savedTime;
                             }
+                            // Reset savedTime so subsequent seeks don't jump back?
+                            // Actually better to nullify it after use, but it is scoped.
                             
                             videoPlayer.title = relPath;
-                            document.getElementById('current-video-title').innerText = relPath + (isTranscoding ? " (Compatibility Mode)" : "");
+                            const titleEl = document.getElementById('current-video-title');
+                            if (titleEl) {
+                                titleEl.innerText = relPath + (isTranscoding ? " (Compatibility Mode)" : "");
+                            }
+                            
                             videoPlayer.play().catch(e => console.log("Auto-play prevented:", e));
                         };
                     });
@@ -371,66 +416,99 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // Seek
+    let isDragging = false;
+
+    // Consolidated Seek Function
+    function performSeek(time, commit = false) {
+        // Clamp
+        const maxDuration = (isTranscoding && totalDuration) ? totalDuration : (videoPlayer.duration || 0);
+        if (maxDuration === 0) return; // Nothing we can do
+        
+        time = Math.max(0, Math.min(time, maxDuration));
+        
+        // Update UI immediately (visual feedback)
+        const percent = (time / maxDuration) * 100;
+        progressBar.style.width = `${percent}%`;
+        timeDisplay.textContent = `${formatTime(time)} / ${formatTime(maxDuration)}`;
+        
+        if (!isTranscoding) {
+            // Direct Play: Seek immediately
+            // But if dragging, maybe wait? No, standard HTML5 video seeks fast usually.
+            // If dragging, we might want to pause to avoid stutter audio?
+            videoPlayer.currentTime = time;
+        } else {
+            // Transcoding Object Representation
+            // Only reload the stream if we are 'committing' (mouseup or key press finished)
+            if (commit) {
+                 playerContainer.style.cursor = 'wait';
+                 streamOffset = time;
+                 const encodedPath = encodeURIComponent(currentVideoPath);
+                 videoPlayer.src = `/stream/${encodedPath}?startTime=${time}&vCodec=${currentVideoCodec || ''}`;
+                 videoPlayer.play().catch(e => console.error(e));
+                 playerContainer.style.cursor = 'default';
+            }
+        }
+    }
+
+    progressBarContainer.addEventListener('mousedown', (e) => {
+        isDragging = true;
+        updateProgressFromEvent(e, false); // Update UI only
+    });
+
+    document.addEventListener('mousemove', (e) => {
+        if (isDragging) {
+            updateProgressFromEvent(e, false);
+        }
+    });
+
+    document.addEventListener('mouseup', (e) => {
+        if (isDragging) {
+            // Commit the seek
+            updateProgressFromEvent(e, true); 
+            isDragging = false;
+        }
+    });
+
+    // Handle clicks that aren't drags (mouseup handles the end of a click too, but let's be safe)
     progressBarContainer.addEventListener('click', (e) => {
+        // Debounce if needed, or rely on mouseup? 
+        // Mouseup on document handles the drag end.
+        // If it was a simple click, mousedown starts drag, mouseup ends drag -> commit.
+        // So click listener might be redundant or double-fire.
+        // Let's remove the click listener entirely and rely on mousedown/up.
+    });
+    
+    function updateProgressFromEvent(e, commit) {
         const rect = progressBarContainer.getBoundingClientRect();
-        // Account for the 0px padding on left/right defined in CSS
         const padding = 0; 
         const visualWidth = rect.width - (padding * 2);
         const clickX = e.clientX - rect.left - padding;
         
         let pos = clickX / visualWidth;
-        // Clamp between 0 and 1
         pos = Math.max(0, Math.min(1, pos));
         
-        let seekTime;
-       
-        if (isTranscoding) {
-            seekTime = pos * totalDuration;
-            streamOffset = seekTime;
-            const encodedPath = encodeURIComponent(currentVideoPath);
-            videoPlayer.src = `/stream/${encodedPath}?startTime=${seekTime}`;
-            
-            // Wait for load start effectively
-            videoPlayer.onloadedmetadata = () => {
-                videoPlayer.play();
-                // Ensure UI aligns
-                progressBar.style.width = `${pos * 100}%`;
-            };
-        } else {
-             if (videoPlayer.duration) {
-                videoPlayer.currentTime = pos * videoPlayer.duration;
-             }
-        }
-    });
+        const maxDuration = (isTranscoding && totalDuration) ? totalDuration : (videoPlayer.duration || 0);
+        performSeek(pos * maxDuration, commit);
+    }
 
     // Time Tooltip
     progressBarContainer.addEventListener('mousemove', (e) => {
         const rect = progressBarContainer.getBoundingClientRect();
-        const padding = 0;
+        const padding = 0; // consistent with CSS
         const visualWidth = rect.width - (padding * 2);
-        const clickX = e.clientX - rect.left - padding;
+        const clickX = e.clientX - rect.left - padding; // relative to bar
         
         let pos = clickX / visualWidth;
         
-        let hoverTime;
-        if (isTranscoding && totalDuration) {
-             hoverTime = pos * totalDuration;
-        } else {
-             hoverTime = pos * videoPlayer.duration;
-        }
+        const maxDuration = (isTranscoding && totalDuration) ? totalDuration : (videoPlayer.duration || 0);
+        const hoverTime = pos * maxDuration;
         
-        // Clamp and format
-        const maxTime = (isTranscoding && totalDuration) ? totalDuration : (videoPlayer.duration || 0);
-        const safeTime = Math.max(0, Math.min(hoverTime, maxTime));
+        const safeTime = Math.max(0, Math.min(hoverTime, maxDuration));
         timeTooltip.textContent = formatTime(safeTime);
         
-        // Position the tooltip
-        // We want it centered on the cursor, but constrained to the container so it doesn't overflow
-        const tooltipWidth = timeTooltip.offsetWidth; // Get current width
-        let leftPos = e.clientX - rect.left;
-        
-        // Simple positioning
-        timeTooltip.style.left = `${leftPos}px`;
+        // Tooltip position (centered on mouse X, clamped to container)
+        // ... implementation details can use simple left style ...
+        timeTooltip.style.left = `${e.clientX - rect.left}px`;
     });
 
     // Volume
@@ -451,6 +529,9 @@ document.addEventListener('DOMContentLoaded', () => {
     videoPlayer.addEventListener('ended', () => {
         playPauseBtn.textContent = '⏵';
     });
+    
+    let seekDebounce = null;
+    let pendingSeekTime = null;
 
     // Keyboard Shortcuts
     document.addEventListener('keydown', (e) => {
@@ -481,53 +562,38 @@ document.addEventListener('DOMContentLoaded', () => {
                 break;
         }
     });
-    let seekDebounce = null;
-    let pendingSeekTime = null;
 
     function handleKeys(delta) {
-        if (!isTranscoding) {
-            let t = videoPlayer.currentTime + delta;
-            t = Math.max(0, Math.min(t, videoPlayer.duration || 0));
-            videoPlayer.currentTime = t;
-            return;
-        }
-
-        // Transcoding seek logic
-        if (pendingSeekTime === null) {
-            // First press: base off "stream logic time"
-            // We need to use streamOffset + currentTime, but if we just sought, current time might be 0.
-            pendingSeekTime = streamOffset + videoPlayer.currentTime;
-        }
-    
-        // Apply delta
-        pendingSeekTime += delta;
-        pendingSeekTime = Math.max(0, Math.min(pendingSeekTime, totalDuration));
-            
-        // Visual feedback immediately
-        const percent = (pendingSeekTime / totalDuration) * 100;
-        progressBar.style.width = `${percent}%`;
-        timeDisplay.textContent = `${formatTime(pendingSeekTime)} / ${formatTime(totalDuration)}`;
+        // Calculate current time base
+        // If we are already scrubbing via keyboard (pendingSeekTime set), use that.
+        // If not, use current video time.
         
-        // Show loading cursor
-        playerContainer.style.cursor = 'wait';
+        let baseTime;
+        if (pendingSeekTime !== null) {
+            baseTime = pendingSeekTime;
+        } else {
+             if (isTranscoding) {
+                 baseTime = streamOffset + videoPlayer.currentTime;
+             } else {
+                 baseTime = videoPlayer.currentTime;
+             }
+        }
         
-        // Clear previous scheduled reload
+        let newTime = baseTime + delta;
+        pendingSeekTime = newTime; // Update pending
+        
+        // Visual update immediately (commit=false)
+        performSeek(newTime, false);
+        
+        // Debounce only the network commit
         if (seekDebounce) clearTimeout(seekDebounce);
         
-        // Wait 300ms for user to stop pressing keys - faster reaction
         seekDebounce = setTimeout(() => {
-            streamOffset = pendingSeekTime;
-            const encodedPath = encodeURIComponent(currentVideoPath);
-            
-            videoPlayer.src = `/stream/${encodedPath}?startTime=${pendingSeekTime}`;
-            videoPlayer.play().catch(e => {});
-
-            // Reset pending state
-            pendingSeekTime = null;
-            playerContainer.style.cursor = 'default';
-        }, 300); 
+            performSeek(pendingSeekTime, true); // Commit
+            pendingSeekTime = null; // Reset
+        }, 300); // 300ms wait
     }
-// Remove duplicate seek function and variables
+
     // Double Click Fullscreen
     playerContainer.addEventListener('dblclick', (e) => {
         // Prevent triggering the single click play/pause if possible, or just accept the toggle
@@ -536,78 +602,46 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // Smoother Mouse Wheel Seek
-    let seekTarget = null;
-    let seekTimeout;
+    let wheelDebounce = null;
+    let wheelTarget = null;
     
     playerContainer.addEventListener('wheel', (e) => {
         e.preventDefault();
-
-        // 1. Calculate direction and magnitude based on scroll speed
-        // standard deltaY is ~100.
-        const delta = e.deltaY;
-        const sensitivity = 0.05; // Seconds per delta unit
-        const seekStep = delta * -sensitivity; // Invert: Down = backward, Up = forward? 
-        // Wait, normally Scroll Up (negative) -> Move UP/Back in document. 
-        // But in video players: Scroll Up -> Volume Up or Forward?
-        // Let's stick to: Up (-delta) = Forward, Down (+delta) = Backward
-        // so delta * -1 matches previous logic.
         
-        // 2. Initialize seek target if not active
-        if (seekTarget === null) {
-            seekTarget = videoPlayer.currentTime;
+        const delta = e.deltaY;
+        const sensitivity = 0.05; // 5% of scroll? No, fixed seconds is better usually?
+        // Let's use 5 seconds per 'notch' roughly?
+        // deltaY is usually 100. So 100 * -0.05 = -5 seconds.
+        
+        const seekStep = delta * -0.05; 
+
+        // Current Base
+        if (wheelTarget === null) {
+             if (isTranscoding) {
+                 wheelTarget = streamOffset + videoPlayer.currentTime;
+             } else {
+                 wheelTarget = videoPlayer.currentTime;
+             }
         }
-
-        // 3. Accumulate seek time
-        seekTarget += seekStep;
-        seekTarget = Math.max(0, Math.min(videoPlayer.duration, seekTarget));
-
-        // 4. Update UI immediately (optional, or wait for timeupdate)
-        const percent = (seekTarget / videoPlayer.duration) * 100;
-        progressBar.style.width = `${percent}%`;
-        const current = formatTime(seekTarget);
-        const total = formatTime(videoPlayer.duration);
-        timeDisplay.textContent = `${current} / ${total}`;
-
-        // 5. Debounce the actual seek to avoid stuttering
-        clearTimeout(seekTimeout);
-        seekTimeout = setTimeout(() => {
-            // Apply the final seek
-            videoPlayer.currentTime = seekTarget;
-            seekTarget = null; // Reset
-        }, 50); // Small delay to gather scroll events
+        
+        wheelTarget += seekStep;
+        
+        // Visual
+        performSeek(wheelTarget, false);
+        
+        // Debounce commit
+        clearTimeout(wheelDebounce);
+        wheelDebounce = setTimeout(() => {
+             performSeek(wheelTarget, true);
+             wheelTarget = null;
+        }, 50); // Short delay for wheel
         
         showControls();
     }, { passive: false });
+    
+    // Remove old drag listeners if any remained (handled by consolidated block above)
+    // ...
 
-    // Also support dragging the progress bar
-    let isDragging = false;
-    
-    progressBarContainer.addEventListener('mousedown', (e) => {
-        isDragging = true;
-        updateProgressFromEvent(e);
-    });
-    
-    document.addEventListener('mousemove', (e) => {
-        if (isDragging) {
-            updateProgressFromEvent(e);
-        }
-    });
-    
-    document.addEventListener('mouseup', () => {
-        if (isDragging) {
-            isDragging = false;
-        }
-    });
-    
-    function updateProgressFromEvent(e) {
-        const rect = progressBarContainer.getBoundingClientRect();
-        const padding = 0;
-        const visualWidth = rect.width - (padding * 2);
-        const clickX = e.clientX - rect.left - padding;
-        
-        let pos = clickX / visualWidth;
-        videoPlayer.currentTime = Math.max(0, Math.min(1, pos)) * videoPlayer.duration;
-    }
 
     // Helper: Format time
     function formatTime(seconds) {
