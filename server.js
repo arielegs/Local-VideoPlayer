@@ -266,22 +266,77 @@ expressApp.get(/^\/api\/metadata\/(.*)/, (req, res) => {
         const d = metadata && metadata.format && metadata.format.duration;
         
         let vCodec = null;
-        let aCodec = null;
+        let audioTracks = [];
+        let subtitleTracks = [];
 
         if (metadata && metadata.streams) {
             const videoStream = metadata.streams.find(s => s.codec_type === 'video');
             if (videoStream) vCodec = videoStream.codec_name;
             
-            const audioStream = metadata.streams.find(s => s.codec_type === 'audio');
-            if (audioStream) aCodec = audioStream.codec_name;
+            // Collect audio tracks
+            metadata.streams.forEach((s, index) => {
+                if (s.codec_type === 'audio') {
+                    audioTracks.push({
+                        index: s.index, // absolute index in file
+                        codec: s.codec_name,
+                        language: (s.tags && s.tags.language) ? s.tags.language : 'und',
+                        title: (s.tags && s.tags.title) ? s.tags.title : `Audio Track ${audioTracks.length + 1}`
+                    });
+                }
+                 if (s.codec_type === 'subtitle') {
+                     subtitleTracks.push({
+                         index: s.index,
+                         codec: s.codec_name,
+                         language: (s.tags && s.tags.language) ? s.tags.language : 'und',
+                         title: (s.tags && s.tags.title) ? s.tags.title : `Subtitle ${subtitleTracks.length + 1}`
+                     });
+                 }
+            });
         }
 
         res.json({ 
             duration: parseFloat(d) || 0,
             videoCodec: vCodec,
-            audioCodec: aCodec
+            audioTracks: audioTracks,
+            subtitleTracks: subtitleTracks
         });
     });
+});
+
+// Serve Subtitles (Extract on the fly)
+expressApp.get(/^\/api\/subtitles\/(.*)/, (req, res) => {
+    const config = loadConfig();
+    const videoPath = decodeURIComponent(req.params[0]);
+    if (!config.video_directory) return res.sendStatus(404);
+    
+    const fullPath = path.join(path.resolve(config.video_directory), videoPath);
+    const streamIndex = req.query.streamIndex;
+    const startTime = req.query.startTime || 0;
+
+    if (!fs.existsSync(fullPath)) return res.sendStatus(404);
+
+    // console.log(`Extracting subtitles for stream ${streamIndex} from ${fullPath}`);
+
+    res.contentType('text/vtt');
+    
+    const inputOptions = [];
+    if (startTime > 0) {
+        inputOptions.push(`-ss ${startTime}`);
+    }
+
+    const command = ffmpeg(fullPath)
+        .inputOptions(inputOptions)
+        .outputOptions([
+             `-map 0:${streamIndex}`, // Select specific subtitle stream
+             '-f webvtt'              // Force WebVTT format
+        ])
+        .on('error', (err) => {
+             console.error('Subtitle extraction error:', err.message);
+             if (!res.headersSent) {
+                 res.status(500).send('Error extracting subtitles');
+             }
+        })
+        .pipe(res, { end: true });
 });
 
 // Transcoded Video Stream (for wide compatibility)
@@ -302,29 +357,63 @@ expressApp.get(/^\/stream\/(.*)/, (req, res) => {
     }
 
     const startTime = req.query.startTime || 0;
-    const clientVideoCodec = req.query.vCodec; // Optimization: client tells us codec
+    const clientVideoCodec = req.query.vCodec; 
+    const audioIndex = req.query.audioIndex; // Desired audio stream index (absolute)
 
     const startStream = (vCodecName) => {
          let vCodec = 'libx264';
+         // Standardize options for better sync
          let additionalOptions = [
              '-preset ultrafast',
              '-tune zerolatency',
              '-crf 23',
              '-pix_fmt yuv420p',
-             '-g 30'
+             '-g 60', // Force more frequent keyframes for seeking
+             '-sc_threshold 0' 
          ];
          
-         if (vCodecName === 'h264' || vCodecName === 'avc1') {
-              vCodec = 'copy';
-              additionalOptions = []; 
-         }
+         // FORCE RE-ENCODE for now to fix sync issues. 
+         // 'copy' is the main culprit for A/V desync when seeking because 
+         // video snaps to keyframes while audio cuts precisely.
+         // if (vCodecName === 'h264' || vCodecName === 'avc1') {
+         //      vCodec = 'copy';
+         //      additionalOptions = []; 
+         // }
 
          res.contentType('video/mp4');
 
          const command = ffmpeg(fullPath);
 
          if (startTime > 0) {
+            // "Accurate Seek" strategy: 
+            // -ss BEFORE -i is fast/keyframe snap (Input Seek). Good for long videos.
+            // -ss AFTER -i is accurate decoding (Output Seek). Good for precision.
+            // Combining (seek close with input, then precise seek with output) is complex in fluent-ffmpeg.
+            // Since we are now forcing re-encoding, input seek snaps to keyframe, and we start encoding from there.
+            // Both video and audio start from that keyframe timestamp.
             command.seekInput(startTime);
+         }
+         
+         // Standard probe size
+         command.inputOptions([
+             '-probesize 10M', 
+             '-analyzeduration 10M'
+         ]);
+
+         // Map video (default to first usually)
+         command.outputOptions(['-map 0:v:0']);
+
+         // Map Audio
+         if (audioIndex !== undefined && audioIndex !== null) {
+              const idx = parseInt(audioIndex);
+              if (!isNaN(idx)) {
+                   command.outputOptions([`-map 0:${idx}`]);
+              } else {
+                   // Fallback to auto-select best audio if index invalid
+                   command.outputOptions(['-map 0:a:0']);
+              }
+         } else {
+              command.outputOptions(['-map 0:a:0']); 
          }
 
          command
@@ -333,11 +422,13 @@ expressApp.get(/^\/stream\/(.*)/, (req, res) => {
             .audioCodec('aac')     
             .audioChannels(2)
             .outputOptions([
-                 '-movflags frag_keyframe+empty_moov', 
+                 '-movflags frag_keyframe+empty_moov+default_base_moof', 
+                 '-reset_timestamps 1', // Crucial for A/V sync after seek
+                 // '-avoid_negative_ts make_zero', // Ensure no negative timestamps
                  ...additionalOptions
             ])
             .on('start', (cmd) => {
-                 // console.log('Started ffmpeg:', cmd);
+                 console.log('Started ffmpeg:', cmd);
             })
             .on('error', (err) => {
                  if (err.message !== 'Output stream closed') {

@@ -1,315 +1,18 @@
 document.addEventListener('DOMContentLoaded', () => {
+    // --- Elements ---
     const videoList = document.getElementById('video-list');
     const videoPlayer = document.getElementById('video-player');
+    
+    // Modal & Config
     const modal = document.getElementById('settings-modal');
-    const btn = document.getElementById("folder-btn");
-    const span = document.getElementsByClassName("close")[0];
+    const folderBtn = document.getElementById("folder-btn");
+    const closeSpan = document.getElementsByClassName("close")[0];
     const saveSettings = document.getElementById("save-settings");
     const browseBtn = document.getElementById("browse-btn");
     const dirInput = document.getElementById("video-dir-input");
     const transcodeToggle = document.getElementById("transcode-toggle");
     
-    let currentVideoPath = null;
-    let isTranscoding = false;
-    let currentVideoCodec = null; // Store codec info
-
-    // Load saved preference
-    const savedTranscode = localStorage.getItem('transcodePref');
-    if (savedTranscode === 'true') {
-        transcodeToggle.checked = true;
-        isTranscoding = true;
-    }
-
-    // Toggle listener for immediate effect
-    transcodeToggle.addEventListener('change', () => {
-        // Save progress BEFORE updating global state logic
-        if (currentVideoPath) {
-            let t = videoPlayer.currentTime;
-            // If switching OFF (new checked=false), old state was transcoding (true)
-            if (!transcodeToggle.checked) {
-                t += streamOffset;
-            }
-            saveProgress(currentVideoPath, t);
-            
-            // Pause so playVideo's internal save check sees paused and skips saving
-            videoPlayer.pause();
-        }
-
-        // Update state
-        isTranscoding = transcodeToggle.checked;
-        localStorage.setItem('transcodePref', isTranscoding);
-        
-        // Reload video if one was selected
-        if (currentVideoPath) {
-            const items = Array.from(document.querySelectorAll('.video-item'));
-            const item = items.find(el => el.dataset.path === currentVideoPath);
-            playVideo(currentVideoPath, item);
-        }
-    });
-
-    // Browse Button Click
-    browseBtn.onclick = function() {
-        fetch('/api/choose-directory', { method: 'POST' })
-            .then(res => res.json())
-            .then(data => {
-                if (data.path) {
-                    dirInput.value = data.path;
-                }
-            })
-            .catch(err => console.error("Error opening dialog:", err));
-    }
-    
-    // Fetch video list
-    function loadVideos() {
-        fetch('/api/videos')
-            .then(response => response.json())
-            .then(videos => {
-                videoList.innerHTML = '';
-                videos.forEach(video => {
-                    const div = document.createElement('div');
-                    div.className = 'video-item';
-                    div.dataset.path = video; // Store path in dataset for easy finding
-                    div.title = video; // Tooltip for full path
-
-                    const nameSpan = document.createElement('span');
-                    nameSpan.textContent = video;
-                    div.appendChild(nameSpan);
-                    
-                    div.onclick = () => playVideo(video, div);
-                    videoList.appendChild(div);
-                });
-                
-                // After loading videos, check for last played
-                fetch('/api/last_played')
-                    .then(r => r.json())
-                    .then(data => {
-                        if(data.last_played) {
-                            highlightLastPlayed(data.last_played);
-                        }
-                    });
-            });
-    }
-
-    function highlightLastPlayed(path) {
-        // Remove existing indicators
-        document.querySelectorAll('.last-played-indicator').forEach(el => el.remove());
-        
-        // Find the element (dataset.path uses spaces in filename, not encoded)
-        // Ensure path matches dataset
-        const items = Array.from(document.querySelectorAll('.video-item'));
-        const item = items.find(el => el.dataset.path === path);
-        
-        if (item) {
-            const indicator = document.createElement('span');
-            indicator.className = 'last-played-indicator';
-            indicator.textContent = ' 👁️ Last Played';
-            item.appendChild(indicator);
-            item.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }
-    }
-    
-    // Play video function
-    function playVideo(relPath, element, forceTranscode = false) {
-        // Save progress of the current video before switching
-        if (currentVideoPath && !videoPlayer.paused) {
-            let currentTime = videoPlayer.currentTime;
-            if (isTranscoding) currentTime += streamOffset;
-            saveProgress(currentVideoPath, currentTime);
-        }
-        
-        // Reset states
-        // If forceTranscode is true (from error handler), force it.
-        // Otherwise adhere to toggle.
-        isTranscoding = forceTranscode || transcodeToggle.checked;
-
-        // Auto-detect compatibility requirement if not already forced/checked
-        if (!isTranscoding) {
-            const troubleExtensions = ['.mkv', '.avi', '.wmv', '.flv', '.mov', '.ts', '.m3u8'];
-            const format = relPath.substring(relPath.lastIndexOf('.')).toLowerCase();
-            if (troubleExtensions.includes(format)) {
-                 console.log("Auto-enabled compatibility mode for format:", format);
-                 isTranscoding = true;
-                 transcodeToggle.checked = true; // Sync UI
-            }
-        }
-
-        streamOffset = 0;
-        totalDuration = 0;
-        
-        // Update "Last Played" indicator immediately
-        document.querySelectorAll('.last-played-indicator').forEach(el => el.remove());
-        
-        if (element) {
-             const indicator = document.createElement('span');
-             indicator.className = 'last-played-indicator';
-             indicator.textContent = ' 👁️ Last Played';
-             element.appendChild(indicator);
-        }
-
-        // Highlight active item
-        document.querySelectorAll('.video-item').forEach(el => el.classList.remove('active'));
-        if(element) element.classList.add('active');
-        
-        // Update current path immediately
-        currentVideoPath = relPath;
-        const encodedPath = encodeURIComponent(relPath);
-
-        // Fetch Metadata for Duration (Only needed for Transcoding really, but good to have)
-        fetch(`/api/metadata/${encodedPath}`)
-            .then(res => res.json())
-            .then(meta => {
-                totalDuration = meta.duration || 0;
-                currentVideoCodec = meta.videoCodec; // Save codec
-                
-                // Fetch saved progress
-                fetch(`/api/progress/${encodedPath}`)
-                    .then(res => res.json())
-                    .then(data => {
-                        // If checking another video, ignore this result
-                        if (currentVideoPath !== relPath) return;
-
-                        let savedTime = data.timestamp || 0;
-
-                        const playSource = () => {
-                             if (isTranscoding) {
-                                  // Start stream from saved position
-                                  streamOffset = savedTime;
-                                  const videoUrl = `/stream/${encodedPath}?startTime=${savedTime}&vCodec=${currentVideoCodec || ''}`;
-                                  videoPlayer.src = videoUrl;
-                                  videoPlayer.currentTime = 0; // Stream starts here
-                             } else {
-                                  // Direct Play
-                                  const videoUrl = `/video/${encodedPath}`;
-                                  videoPlayer.src = videoUrl;
-                                  // Video might error out here if format bad
-                             }
-                        };
-                        
-                        // Error handling wrapper for Direct Play fallback
-                        const errorHandler = (e) => {
-                             if (!isTranscoding) {
-                                  console.warn("Direct play failed, switching to compatibility mode...", e);
-                                  // Remove this listener to prevent loop if transcode fails too
-                                  videoPlayer.removeEventListener('error', errorHandler);
-                                  transcodeToggle.checked = true;
-                                  playVideo(relPath, element, true);
-                             }
-                        };
-                        
-                        // Reset error handlers
-                        videoPlayer.removeEventListener('error', errorHandler); // clean up old one potentially?
-                        // Actually we should just add it once per load
-                        videoPlayer.addEventListener('error', errorHandler, { once: true });
-
-                        playSource();
-                        
-                        // Define onloadedmetadata once
-                        videoPlayer.onloadedmetadata = () => {
-                           // Only seek for Direct Play initial load
-                           if (!isTranscoding && savedTime > 0 && Math.abs(videoPlayer.currentTime - savedTime) > 0.5) {
-                                videoPlayer.currentTime = savedTime;
-                            }
-                            // Reset savedTime so subsequent seeks don't jump back?
-                            // Actually better to nullify it after use, but it is scoped.
-                            
-                            videoPlayer.title = relPath;
-                            const titleEl = document.getElementById('current-video-title');
-                            if (titleEl) {
-                                titleEl.innerText = relPath + (isTranscoding ? " (Compatibility Mode)" : "");
-                            }
-                            
-                            videoPlayer.play().catch(e => console.log("Auto-play prevented:", e));
-                        };
-                    });
-            }); 
-    }
-
-    // Save progress periodically
-    setInterval(() => {
-        if (!videoPlayer.paused && currentVideoPath) {
-            let t = videoPlayer.currentTime;
-            if (isTranscoding) t += streamOffset;
-            saveProgress(undefined, t);
-        }
-    }, 5000);
-    
-    // Save when paused or page hidden
-    // Note: event listeners pass event object as first arg, handle that in saveProgress
-    videoPlayer.addEventListener('pause', () => {
-         let t = videoPlayer.currentTime;
-         if (isTranscoding) t += streamOffset;
-         saveProgress(undefined, t);
-    });
-    
-    window.addEventListener('beforeunload', () => {
-         let t = videoPlayer.currentTime;
-         if (isTranscoding) t += streamOffset;
-         saveProgress(undefined, t);
-    });
-    
-    function saveProgress(path, time) {
-        // ... (rest is same)
-        // Check if called as event handler
-        if (path && path.type) { // Event object
-            path = undefined;
-            time = undefined;
-        }
-
-        const p = path || currentVideoPath;
-        const t = (time !== undefined && time !== null) ? time : videoPlayer.currentTime;
-
-        if (!p) return;
-        
-        fetch('/api/progress', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                video_path: p,
-                timestamp: t
-            }),
-        });
-    }
-
-    // Modal logic
-    btn.onclick = function() {
-        modal.style.display = "block";
-        fetch('/api/config')
-            .then(res => res.json())
-            .then(data => {
-                dirInput.value = data.video_directory;
-            });
-    }
-    
-    span.onclick = function() {
-        modal.style.display = "none";
-    }
-    
-    window.onclick = function(event) {
-        if (event.target == modal) {
-            modal.style.display = "none";
-        }
-    }
-    
-    saveSettings.onclick = function() {
-        const newDir = dirInput.value;
-        fetch('/api/config', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ video_directory: newDir })
-        })
-        .then(res => res.json())
-        .then(data => {
-            modal.style.display = "none";
-            loadVideos(); // Reload list
-        });
-    }
-
-    // Initial load
-    loadVideos();
-
-    // Custom Video Controls Logic
+    // Player Controls
     const playPauseBtn = document.getElementById('play-pause');
     const progressBarContainer = document.getElementById('progress-bar-container');
     const progressBar = document.getElementById('progress-bar');
@@ -319,77 +22,505 @@ document.addEventListener('DOMContentLoaded', () => {
     const fullscreenBtn = document.getElementById('fullscreen-btn');
     const playerContainer = document.getElementById('player-container');
     const controls = document.getElementById('video-controls');
-    let controlsTimeout;
+    const muteBtn = document.getElementById('mute-btn');
+
+    // New Settings Menu Elements
+    const settingsBtn = document.getElementById('settings-btn');
+    const settingsMenu = document.getElementById('settings-menu');
+    const ccBtn = document.getElementById('cc-btn');
+    
+    // --- State ---
+    let currentVideoPath = null;
+    let isTranscoding = false;
+    let currentVideoCodec = null; 
+    let currentAudioTrack = null; // null means default track
+    let currentSubtitleTrack = -1; // -1 for off
+    let availableSubtitles = [];
+    
     let streamOffset = 0;
     let totalDuration = 0;
+    let controlsTimeout;
+    let isDragging = false;
 
-    const muteBtn = document.getElementById('mute-btn');
-    
-    // Toggle Play/Pause
-    function togglePlay() {
-        if (videoPlayer.paused || videoPlayer.ended) {
-            videoPlayer.play();
-        } else {
-            videoPlayer.pause();
+    // Load saved preference
+    const savedTranscode = localStorage.getItem('transcodePref');
+    if (savedTranscode === 'true') {
+        transcodeToggle.checked = true;
+        isTranscoding = true;
+    }
+
+    // --- Core Video Logic ---
+
+    function loadVideos() {
+        fetch('/api/videos')
+            .then(response => response.json())
+            .then(videos => {
+                videoList.innerHTML = '';
+                videos.forEach(video => {
+                    const div = document.createElement('div');
+                    div.className = 'video-item';
+                    div.dataset.path = video; 
+                    div.title = video;
+
+                    const nameSpan = document.createElement('span');
+                    nameSpan.textContent = video;
+                    div.appendChild(nameSpan);
+                    
+                    div.onclick = () => playVideo(video, div);
+                    videoList.appendChild(div);
+                });
+                
+                // Last played
+                fetch('/api/last_played')
+                    .then(r => r.json())
+                    .then(data => {
+                        if(data.last_played) highlightLastPlayed(data.last_played);
+                    });
+            });
+    }
+
+    function removeSubtitleTracks() {
+        // Iterate through textTracks property first to disable active tracks
+        if (videoPlayer.textTracks) {
+            for (let i = 0; i < videoPlayer.textTracks.length; i++) {
+                 // Set mode to disabled to hide any active cues immediately
+                 try {
+                     videoPlayer.textTracks[i].mode = 'disabled';
+                 } catch (e) { console.warn("Failed to disable track", e); }
+            }
+        }
+        
+        // Then remove the track elements from DOM
+        const tracks = videoPlayer.getElementsByTagName('track');
+        while (tracks.length > 0) {
+            tracks[0].remove();
+        }
+        
+        // Double check
+        Array.from(videoPlayer.querySelectorAll('track')).forEach(t => t.remove());
+    }
+
+    function playVideo(relPath, element, forceTranscode = false) {
+        // Save progress of previous
+        if (currentVideoPath && !videoPlayer.paused) {
+            let t = videoPlayer.currentTime;
+            if (isTranscoding) t += streamOffset;
+            saveProgress(currentVideoPath, t);
+        }
+        
+        // Reset State
+        isTranscoding = forceTranscode || transcodeToggle.checked;
+        
+        // Simpler auto-transcode check
+        if (!isTranscoding) {
+            const ext = relPath.substring(relPath.lastIndexOf('.')).toLowerCase();
+            if (['.mkv', '.avi', '.wmv', '.flv', '.mov', '.ts', '.m3u8'].includes(ext)) {
+                 console.log("Auto-enabled compatibility mode");
+                 isTranscoding = true;
+                 transcodeToggle.checked = true; 
+            }
+        }
+
+        streamOffset = 0;
+        totalDuration = 0;
+        currentAudioTrack = null; 
+        currentSubtitleTrack = -1;
+        
+        // UI Reset
+        videoPlayer.playbackRate = 1.0;
+        updateSpeedSelection(1.0);
+        highlightLastPlayed(relPath); // Update UI highlight
+        
+        currentVideoPath = relPath;
+        document.getElementById('current-video-title').textContent = relPath.split(/[\\/]/).pop();
+        
+        const encodedPath = encodeURIComponent(relPath);
+        
+        // Cleanup old subtitles properly first
+        removeSubtitleTracks();
+        
+        // FULL CLEANUP
+        videoPlayer.innerHTML = ''; 
+
+        // Fetch Metadata
+        fetch(`/api/metadata/${encodedPath}`)
+            .then(res => res.json())
+            .then(meta => {
+                if (currentVideoPath !== relPath) return; // Prevent async metadata loading of old videos
+
+                totalDuration = meta.duration || 0;
+                currentVideoCodec = meta.videoCodec;
+                
+                setupAudioMenu(meta.audioTracks);
+                setupSubtitleMenu(meta.subtitleTracks, encodedPath);
+
+                // Load Progress
+                fetch(`/api/progress/${encodedPath}`)
+                    .then(res => res.json())
+                    .then(data => {
+                        if (currentVideoPath !== relPath) return;
+
+                        let savedTime = data.timestamp || 0;
+                        
+                        // Error fallback
+                        const errorHandler = () => {
+                             if (!isTranscoding) {
+                                  console.warn("Playback failed, forcing transcode...");
+                                  videoPlayer.removeEventListener('error', errorHandler);
+                                  transcodeToggle.checked = true; 
+                                  playVideo(relPath, element, true);
+                             }
+                        };
+                        videoPlayer.addEventListener('error', errorHandler, { once: true });
+
+                        if (isTranscoding) {
+                            streamOffset = savedTime;
+                            let url = `/stream/${encodedPath}?startTime=${savedTime}&vCodec=${currentVideoCodec || ''}`;
+                            // Use strict check for null, allow 0
+                            if(currentAudioTrack !== null) url += `&audioIndex=${currentAudioTrack}`;
+                            videoPlayer.src = url;
+                        } else {
+                            videoPlayer.src = `/video/${encodedPath}`;
+                            videoPlayer.currentTime = savedTime;
+                        }
+                        
+                        // Re-enable subtitle if selected (setupSubtitleMenu runs before this)
+                        if (currentSubtitleTrack !== -1) {
+                            enableSubtitle(currentSubtitleTrack, undefined, encodedPath);
+                        }
+
+                        videoPlayer.play().catch(e => console.log("Autoplay blocked", e));
+                    });
+            }); 
+    }
+
+    function highlightLastPlayed(path) {
+        document.querySelectorAll('.last-played-indicator').forEach(el => el.remove());
+        document.querySelectorAll('.video-item').forEach(el => el.classList.remove('active'));
+        
+        const items = Array.from(document.querySelectorAll('.video-item'));
+        const item = items.find(el => el.dataset.path === path);
+        
+        if (item) {
+            item.classList.add('active');
+            const indicator = document.createElement('span');
+            indicator.className = 'last-played-indicator';
+            indicator.textContent = ' 👁️ Last Played';
+            item.appendChild(indicator);
+            item.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
     }
 
-    // Toggle Mute
-    function toggleMute() {
-        videoPlayer.muted = !videoPlayer.muted;
-        updateVolumeIcon();
+    // --- Settings Menu System ---
+
+    settingsBtn.onclick = (e) => {
+        e.stopPropagation();
+        // Toggle display
+        if (settingsMenu.style.display === 'block') {
+            settingsMenu.style.display = 'none';
+        } else {
+            settingsMenu.style.display = 'block';
+            showPanel('settings-main');
+        }
+    };
+
+    // Close menu when clicking outside
+    document.addEventListener('click', (e) => {
+        if (!settingsMenu.contains(e.target) && e.target !== settingsBtn) {
+            settingsMenu.style.display = 'none';
+        }
+    });
+
+    window.showPanel = function(panelId) {
+        document.querySelectorAll('.settings-panel').forEach(p => {
+            p.classList.add('hidden');
+            p.style.display = 'none';
+        });
+        const target = document.getElementById(panelId);
+        if(target) {
+            target.classList.remove('hidden');
+            target.style.display = 'block';
+        }
+    };
+
+    // Main Menu Nav
+    document.getElementById('row-speed').onclick = (e) => { e.stopPropagation(); showPanel('panel-speed'); };
+    document.getElementById('row-audio').onclick = (e) => { e.stopPropagation(); showPanel('panel-audio'); };
+    document.getElementById('row-subs').onclick = (e) => { e.stopPropagation(); showPanel('panel-subs'); };
+
+    // Back Buttons
+    document.querySelectorAll('.menu-header').forEach(h => {
+        h.onclick = (e) => { e.stopPropagation(); showPanel('settings-main'); };
+    });
+
+    // Speed Logic
+    document.querySelectorAll('#panel-speed .option').forEach(opt => {
+        opt.onclick = (e) => {
+            e.stopPropagation();
+            const speed = parseFloat(opt.dataset.val);
+            videoPlayer.playbackRate = speed;
+            updateSpeedSelection(speed);
+            showPanel('settings-main');
+        };
+    });
+
+    function updateSpeedSelection(speed) {
+        document.getElementById('speed-value').textContent = speed === 1 ? 'Normal' : speed + 'x';
+        document.querySelectorAll('#panel-speed .option').forEach(o => {
+            o.classList.remove('selected');
+            if (parseFloat(o.dataset.val) === speed) o.classList.add('selected');
+        });
+    }
+
+    // Audio Logic
+    function setupAudioMenu(tracks) {
+        const row = document.getElementById('row-audio');
+        const list = document.getElementById('audio-list');
+        list.innerHTML = '';
+        
+        if (!tracks || tracks.length <= 1) {
+            row.style.display = 'none';
+            return;
+        }
+        row.style.display = 'flex';
+
+        // Auto-select based on preference if not already set
+        if (currentAudioTrack === null) {
+            const pref = localStorage.getItem('audioLangPref');
+            if (pref) {
+                const match = tracks.find(t => t.language === pref);
+                if (match) {
+                    currentAudioTrack = match.index;
+                    const langDisp = match.language === 'und' ? `Track ${tracks.indexOf(match)+1}` : match.language.toUpperCase();
+                    document.getElementById('audio-value').textContent = langDisp;
+                }
+            }
+        }
+
+        tracks.forEach((track, i) => {
+            const div = document.createElement('div');
+            div.className = 'option';
+            const lang = track.language === 'und' ? `Track ${i+1}` : track.language.toUpperCase();
+            div.textContent = `${lang} ${track.title ? '- ' + track.title : ''}`;
+            
+            // Check against track.index for correct selection highlighting
+            if (track.index === currentAudioTrack) div.classList.add('selected');
+            
+            div.onclick = (e) => {
+                e.stopPropagation();
+                if (currentAudioTrack === track.index) return;
+                
+                // Save Preference
+                localStorage.setItem('audioLangPref', track.language);
+
+                currentAudioTrack = track.index;
+                document.getElementById('audio-value').textContent = lang;
+                
+                // Reload for audio change
+                let t = videoPlayer.currentTime;
+                if (isTranscoding) t += streamOffset;
+                
+                if (!isTranscoding) {
+                    isTranscoding = true; 
+                    transcodeToggle.checked = true;
+                }
+                
+                streamOffset = t;
+                const encodedPath = encodeURIComponent(currentVideoPath);
+                // Fix: use track.index NOT loop index i
+                videoPlayer.src = `/stream/${encodedPath}?startTime=${t}&vCodec=${currentVideoCodec || ''}&audioIndex=${track.index}`;
+                
+                if (currentSubtitleTrack !== -1) {
+                    enableSubtitle(currentSubtitleTrack, undefined, encodedPath);
+                }
+
+                videoPlayer.play();
+                showPanel('settings-main');
+            };
+            list.appendChild(div);
+        });
+    }
+
+    // Subtitle Logic
+    function setupSubtitleMenu(tracks, encodedPath) {
+        const row = document.getElementById('row-subs');
+        const list = document.getElementById('subs-list');
+        availableSubtitles = tracks || [];
+        list.innerHTML = '';
+        
+        if (!tracks || tracks.length === 0) {
+            row.style.display = 'none';
+            ccBtn.style.display = 'none'; 
+            return;
+        }
+        row.style.display = 'flex';
+        ccBtn.style.display = 'block';
+
+        // Auto-select based on preference
+        if (currentSubtitleTrack === -1) {
+            const pref = localStorage.getItem('subLangPref');
+            if (pref && pref !== 'off') {
+                const match = tracks.find(t => t.language === pref);
+                if (match) {
+                     currentSubtitleTrack = match.index;
+                     document.getElementById('subs-value').textContent = match.language.toUpperCase();
+                }
+            } else {
+                document.getElementById('subs-value').textContent = 'Off';
+            }
+        }
+
+        // Add Off Option
+        const offDiv = document.createElement('div');
+        offDiv.className = 'option';
+        offDiv.textContent = 'Off';
+        if (currentSubtitleTrack === -1) offDiv.classList.add('selected');
+        offDiv.onclick = (e) => {
+             e.stopPropagation();
+             localStorage.setItem('subLangPref', 'off');
+             disableSubtitles();
+             showPanel('settings-main');
+        };
+        list.appendChild(offDiv);
+
+        tracks.forEach((track, i) => {
+            const div = document.createElement('div');
+            div.className = 'option';
+            const lang = track.language === 'und' ? `Sub ${i+1}` : track.language.toUpperCase();
+            div.textContent = `${lang} ${track.title ? '- ' + track.title : ''}`;
+            
+            if (track.index === currentSubtitleTrack) div.classList.add('selected');
+
+            div.onclick = (e) => {
+                e.stopPropagation();
+                localStorage.setItem('subLangPref', track.language);
+                enableSubtitle(track.index, i, encodedPath); // stored index vs array index
+                showPanel('settings-main');
+            };
+            list.appendChild(div);
+        });
+    }
+
+    function disableSubtitles() {
+        currentSubtitleTrack = -1;
+        removeSubtitleTracks();
+        
+        // UI Updates
+        document.getElementById('subs-value').textContent = 'Off';
+        
+        const list = document.getElementById('subs-list');
+        Array.from(list.children).forEach(c => c.classList.remove('selected'));
+        if(list.children[0]) list.children[0].classList.add('selected');
+
+        ccBtn.querySelector('.red-line').style.display = 'block';
+        ccBtn.style.opacity = '0.7';
+    }
+
+    function enableSubtitle(streamIndex, arrayIndex, encodedPath) {
+         currentSubtitleTrack = streamIndex;
+         
+         // Remove old tracks reliably
+         removeSubtitleTracks(); 
+         
+         const idx = arrayIndex !== undefined ? arrayIndex : availableSubtitles.findIndex(t => t.index === streamIndex);
+         const trackInfo = availableSubtitles[idx];
+         if (!trackInfo) return;
+
+         const trackEl = document.createElement('track');
+         trackEl.kind = 'subtitles';
+         trackEl.label = trackInfo.title || `Track ${streamIndex}`;
+         trackEl.srclang = trackInfo.language;
+         
+         let src = `/api/subtitles/${encodedPath}?streamIndex=${streamIndex}`;
+         if (isTranscoding && streamOffset > 0) {
+             src += `&startTime=${streamOffset}`;
+         }
+         trackEl.src = src;
+         
+         trackEl.default = true;
+         
+         // Event listener for load
+         trackEl.addEventListener('load', (e) => {
+             console.log('Subtitle track loaded successfully');
+             if(e.target.track) e.target.track.mode = 'showing';
+         });
+         trackEl.addEventListener('error', (e) => {
+             console.error('Subtitle track failed to load', e);
+         });
+
+         videoPlayer.appendChild(trackEl);
+         
+         // Immediate mode setting attempt
+         setTimeout(() => {
+             if (videoPlayer.textTracks && videoPlayer.textTracks[0]) {
+                 videoPlayer.textTracks[0].mode = 'showing';
+             }
+         }, 100);
+         
+         // UI Updates
+         const langName = trackInfo.language === 'und' ? `Sub ${idx+1}` : trackInfo.language.toUpperCase();
+         document.getElementById('subs-value').textContent = langName;
+
+         const list = document.getElementById('subs-list');
+        Array.from(list.children).forEach(c => c.classList.remove('selected'));
+        if(list.children[idx + 1]) list.children[idx + 1].classList.add('selected');
+
+        ccBtn.querySelector('.red-line').style.display = 'none'; 
+        ccBtn.style.opacity = '1';
+    }
+
+    // Quick Toggle CC
+    ccBtn.onclick = (e) => {
+        e.stopPropagation();
+        if (currentSubtitleTrack !== -1) {
+            disableSubtitles();
+        } else if (availableSubtitles.length > 0) {
+            const encodedPath = encodeURIComponent(currentVideoPath);
+            enableSubtitle(availableSubtitles[0].index, 0, encodedPath);
+        }
+    };
+
+
+    // --- Player Controls (Play, Progress, Volume) ---
+
+    // Toggle Play
+    function togglePlay() {
+        if (videoPlayer.paused || videoPlayer.ended) videoPlayer.play();
+        else videoPlayer.pause();
     }
     
-    function updateVolumeIcon() {
+    playPauseBtn.addEventListener('click', togglePlay);
+    videoPlayer.addEventListener('click', (e) => {
+        if (settingsMenu.contains(e.target) || e.target === settingsBtn) return;
+        togglePlay();
+    });
+
+    videoPlayer.addEventListener('play', () => {
+         playPauseBtn.innerHTML = '<svg class="icon" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" fill="#fff"/></svg>';
+         showControls();
+    });
+    
+    videoPlayer.addEventListener('pause', () => {
+         playPauseBtn.innerHTML = '<svg class="icon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" fill="#fff"/></svg>';
+         showControls();
+    });
+
+    // Mute
+    muteBtn.addEventListener('click', () => {
+        videoPlayer.muted = !videoPlayer.muted;
         const iconPath = muteBtn.querySelector('path');
-        if (videoPlayer.muted || videoPlayer.volume === 0) {
-            // Muted icon
+        if (videoPlayer.muted) {
             iconPath.setAttribute('d', 'M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z');
         } else {
-            // Volume Up icon
             iconPath.setAttribute('d', 'M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z');
         }
-    }
-
-    playPauseBtn.addEventListener('click', togglePlay);
-    videoPlayer.addEventListener('click', togglePlay);
-    muteBtn.addEventListener('click', toggleMute);
-
-    // Sync UI with state
-    videoPlayer.addEventListener('play', () => {
-        // Change to Pause icon
-        playPauseBtn.querySelector('path').setAttribute('d', 'M6 19h4V5H6v14zm8-14v14h4V5h-4z');
-        showControls();
-    });
-
-    videoPlayer.addEventListener('pause', () => {
-        // Change to Play icon
-        playPauseBtn.querySelector('path').setAttribute('d', 'M8 5v14l11-7z');
-        showControls(); 
-        clearTimeout(controlsTimeout); 
-        controls.style.opacity = '1';
-        controls.style.pointerEvents = 'auto';
-        playerContainer.style.cursor = 'default';
     });
     
-    videoPlayer.addEventListener('volumechange', () => {
-        updateVolumeIcon();
-        volumeSlider.value = videoPlayer.volume;
+    volumeSlider.addEventListener('input', (e) => {
+        videoPlayer.volume = e.target.value;
     });
 
-    // Fullscreen Update Icon
-    playerContainer.addEventListener('fullscreenchange', () => {
-        const path = fullscreenBtn.querySelector('path');
-        if (document.fullscreenElement) {
-             // Exit Fullscreen icon
-             path.setAttribute('d', 'M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z');
-        } else {
-             // Enter Fullscreen icon
-             path.setAttribute('d', 'M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z');
-        }
-    });
-
-    // Update Progress Bar & Time
+    // Progress
     videoPlayer.addEventListener('timeupdate', () => {
         let currentTime = videoPlayer.currentTime;
         let duration = videoPlayer.duration;
@@ -397,284 +528,240 @@ document.addEventListener('DOMContentLoaded', () => {
         if (isTranscoding) {
              duration = totalDuration;
              currentTime = streamOffset + videoPlayer.currentTime;
-             
-             // Sanity check
-             if (Math.abs(duration - currentTime) < 1) {
-                 currentTime = duration;
-             }
         }
 
-        if (!duration && !isTranscoding) return; // Allow 0 duration for stream start?
-        if (!duration) duration = 1; // prevent div by zero
-
-        const percent = (currentTime / duration) * 100;
-        progressBar.style.width = `${percent}%`;
-        
-        const current = formatTime(currentTime);
-        const total = formatTime(duration);
-        timeDisplay.textContent = `${current} / ${total}`;
+        if (!duration) duration = 1; 
+        if (!isDragging) {
+            const percent = (currentTime / duration) * 100;
+            progressBar.style.width = `${percent}%`;
+            timeDisplay.textContent = `${formatTime(currentTime)} / ${formatTime(duration)}`;
+        }
     });
 
-    // Seek
-    let isDragging = false;
-
-    // Consolidated Seek Function
-    function performSeek(time, commit = false) {
-        // Clamp
-        const maxDuration = (isTranscoding && totalDuration) ? totalDuration : (videoPlayer.duration || 0);
-        if (maxDuration === 0) return; // Nothing we can do
-        
-        time = Math.max(0, Math.min(time, maxDuration));
-        
-        // Update UI immediately (visual feedback)
-        const percent = (time / maxDuration) * 100;
-        progressBar.style.width = `${percent}%`;
-        timeDisplay.textContent = `${formatTime(time)} / ${formatTime(maxDuration)}`;
-        
-        if (!isTranscoding) {
-            // Direct Play: Seek immediately
-            // But if dragging, maybe wait? No, standard HTML5 video seeks fast usually.
-            // If dragging, we might want to pause to avoid stutter audio?
-            videoPlayer.currentTime = time;
-        } else {
-            // Transcoding Object Representation
-            // Only reload the stream if we are 'committing' (mouseup or key press finished)
-            if (commit) {
-                 playerContainer.style.cursor = 'wait';
-                 streamOffset = time;
-                 const encodedPath = encodeURIComponent(currentVideoPath);
-                 videoPlayer.src = `/stream/${encodedPath}?startTime=${time}&vCodec=${currentVideoCodec || ''}`;
-                 videoPlayer.play().catch(e => console.error(e));
-                 playerContainer.style.cursor = 'default';
-            }
-        }
-    }
-
+    // Seek Drag
     progressBarContainer.addEventListener('mousedown', (e) => {
         isDragging = true;
-        updateProgressFromEvent(e, false); // Update UI only
+        handleSeek(e, false);
     });
-
+    
     document.addEventListener('mousemove', (e) => {
-        if (isDragging) {
-            updateProgressFromEvent(e, false);
-        }
+        if (isDragging) handleSeek(e, false);
     });
-
+    
     document.addEventListener('mouseup', (e) => {
         if (isDragging) {
-            // Commit the seek
-            updateProgressFromEvent(e, true); 
+            handleSeek(e, true);
             isDragging = false;
         }
     });
 
-    // Handle clicks that aren't drags (mouseup handles the end of a click too, but let's be safe)
-    progressBarContainer.addEventListener('click', (e) => {
-        // Debounce if needed, or rely on mouseup? 
-        // Mouseup on document handles the drag end.
-        // If it was a simple click, mousedown starts drag, mouseup ends drag -> commit.
-        // So click listener might be redundant or double-fire.
-        // Let's remove the click listener entirely and rely on mousedown/up.
-    });
-    
-    function updateProgressFromEvent(e, commit) {
+    function handleSeek(e, commit) {
         const rect = progressBarContainer.getBoundingClientRect();
-        const padding = 0; 
-        const visualWidth = rect.width - (padding * 2);
-        const clickX = e.clientX - rect.left - padding;
-        
-        let pos = clickX / visualWidth;
+        const maxDuration = (isTranscoding && totalDuration) ? totalDuration : (videoPlayer.duration || 0);
+        let pos = (e.clientX - rect.left) / rect.width;
         pos = Math.max(0, Math.min(1, pos));
         
-        const maxDuration = (isTranscoding && totalDuration) ? totalDuration : (videoPlayer.duration || 0);
-        performSeek(pos * maxDuration, commit);
+        const newTime = pos * maxDuration;
+        
+        progressBar.style.width = `${pos * 100}%`;
+        timeDisplay.textContent = `${formatTime(newTime)} / ${formatTime(maxDuration)}`;
+        
+        if (commit) {
+            if (isTranscoding) {
+                // Buffer seek
+                streamOffset = newTime;
+                
+                // Clear existing tracks before changing source
+                removeSubtitleTracks();
+
+                const encodedPath = encodeURIComponent(currentVideoPath);
+                let url = `/stream/${encodedPath}?startTime=${newTime}&vCodec=${currentVideoCodec || ''}`;
+                if(currentAudioTrack !== null) url += `&audioIndex=${currentAudioTrack}`;
+                videoPlayer.src = url;
+                
+                // Re-enable subtitles for new segment
+                if (currentSubtitleTrack !== -1) {
+                     enableSubtitle(currentSubtitleTrack, undefined, encodedPath);
+                }
+
+                videoPlayer.play();
+            } else {
+                videoPlayer.currentTime = newTime;
+            }
+        }
     }
-
-    // Time Tooltip
-    progressBarContainer.addEventListener('mousemove', (e) => {
-        const rect = progressBarContainer.getBoundingClientRect();
-        const padding = 0; // consistent with CSS
-        const visualWidth = rect.width - (padding * 2);
-        const clickX = e.clientX - rect.left - padding; // relative to bar
+    
+    // Formatting
+    function formatTime(seconds) {
+        if(isNaN(seconds)) return "0:00";
+        const m = Math.floor(seconds / 60);
+        const s = Math.floor(seconds % 60);
+        const h = Math.floor(m / 60);
         
-        let pos = clickX / visualWidth;
-        
-        const maxDuration = (isTranscoding && totalDuration) ? totalDuration : (videoPlayer.duration || 0);
-        const hoverTime = pos * maxDuration;
-        
-        const safeTime = Math.max(0, Math.min(hoverTime, maxDuration));
-        timeTooltip.textContent = formatTime(safeTime);
-        
-        // Tooltip position (centered on mouse X, clamped to container)
-        // ... implementation details can use simple left style ...
-        timeTooltip.style.left = `${e.clientX - rect.left}px`;
-    });
-
-    // Volume
-    volumeSlider.addEventListener('input', (e) => {
-        videoPlayer.volume = e.target.value;
-    });
+        if (h > 0) return `${h}:${(m%60).toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
+        return `${m}:${s.toString().padStart(2,'0')}`;
+    }
 
     // Fullscreen
     fullscreenBtn.addEventListener('click', () => {
-        if (!document.fullscreenElement) {
-            playerContainer.requestFullscreen();
-        } else {
-            document.exitFullscreen();
-        }
-    });
-
-    // Reset Play button on end
-    videoPlayer.addEventListener('ended', () => {
-        playPauseBtn.textContent = '⏵';
+        if (!document.fullscreenElement) playerContainer.requestFullscreen();
+        else document.exitFullscreen();
     });
     
-    let seekDebounce = null;
-    let pendingSeekTime = null;
-
-    // Keyboard Shortcuts
-    document.addEventListener('keydown', (e) => {
-        // Ignore if typing in an input
-        if (document.activeElement.tagName === 'INPUT') return;
-
-        switch(e.key) {
-            case ' ':
-            case 'k':
-                e.preventDefault(); // Prevent scrolling
-                togglePlay();
-                break;
-            case 'ArrowRight':
-                e.preventDefault();
-                handleKeys(5);
-                break;
-            case 'ArrowLeft':
-                e.preventDefault();
-                handleKeys(-5);
-                break;
-            case 'f':
-                e.preventDefault();
-                fullscreenBtn.click();
-                break;
-            case 'm':
-                e.preventDefault();
-                videoPlayer.muted = !videoPlayer.muted;
-                break;
-        }
-    });
-
-    function handleKeys(delta) {
-        // Calculate current time base
-        // If we are already scrubbing via keyboard (pendingSeekTime set), use that.
-        // If not, use current video time.
-        
-        let baseTime;
-        if (pendingSeekTime !== null) {
-            baseTime = pendingSeekTime;
-        } else {
-             if (isTranscoding) {
-                 baseTime = streamOffset + videoPlayer.currentTime;
-             } else {
-                 baseTime = videoPlayer.currentTime;
-             }
-        }
-        
-        let newTime = baseTime + delta;
-        pendingSeekTime = newTime; // Update pending
-        
-        // Visual update immediately (commit=false)
-        performSeek(newTime, false);
-        
-        // Debounce only the network commit
-        if (seekDebounce) clearTimeout(seekDebounce);
-        
-        seekDebounce = setTimeout(() => {
-            performSeek(pendingSeekTime, true); // Commit
-            pendingSeekTime = null; // Reset
-        }, 300); // 300ms wait
-    }
-
-    // Double Click Fullscreen
     playerContainer.addEventListener('dblclick', (e) => {
-        // Prevent triggering the single click play/pause if possible, or just accept the toggle
-        e.preventDefault(); 
+        if (settingsMenu.contains(e.target)) return;
         fullscreenBtn.click();
     });
 
-    // Smoother Mouse Wheel Seek
-    let wheelDebounce = null;
-    let wheelTarget = null;
-    
-    playerContainer.addEventListener('wheel', (e) => {
-        e.preventDefault();
-        
-        const delta = e.deltaY;
-        const sensitivity = 0.05; // 5% of scroll? No, fixed seconds is better usually?
-        // Let's use 5 seconds per 'notch' roughly?
-        // deltaY is usually 100. So 100 * -0.05 = -5 seconds.
-        
-        const seekStep = delta * -0.05; 
-
-        // Current Base
-        if (wheelTarget === null) {
-             if (isTranscoding) {
-                 wheelTarget = streamOffset + videoPlayer.currentTime;
-             } else {
-                 wheelTarget = videoPlayer.currentTime;
-             }
-        }
-        
-        wheelTarget += seekStep;
-        
-        // Visual
-        performSeek(wheelTarget, false);
-        
-        // Debounce commit
-        clearTimeout(wheelDebounce);
-        wheelDebounce = setTimeout(() => {
-             performSeek(wheelTarget, true);
-             wheelTarget = null;
-        }, 50); // Short delay for wheel
-        
-        showControls();
-    }, { passive: false });
-    
-    // Remove old drag listeners if any remained (handled by consolidated block above)
-    // ...
-
-
-    // Helper: Format time
-    function formatTime(seconds) {
-        if(isNaN(seconds)) return "0:00";
-        const mins = Math.floor(seconds / 60);
-        const secs = Math.floor(seconds % 60);
-        return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
-    }
-
-    // Hide controls after inactivity
+    // Control Visibility
     function showControls() {
+        controls.className = 'controls'; // Ensure visible class
         controls.style.opacity = '1';
-        controls.style.pointerEvents = 'auto';
         playerContainer.style.cursor = 'default';
         
         clearTimeout(controlsTimeout);
         controlsTimeout = setTimeout(() => {
-            if (!videoPlayer.paused) {
-                // If hovering over controls, don't hide
-                if (controls.matches(':hover')) {
-                    showControls(); // Check again later
-                    return;
-                }
+            if (!videoPlayer.paused && !controls.matches(':hover') && !settingsMenu.contains(document.activeElement)) {
                 controls.style.opacity = '0';
-                controls.style.pointerEvents = 'none';
-                playerContainer.style.cursor = 'none'; // Hide cursor
+                playerContainer.style.cursor = 'none';
             }
         }, 3000);
     }
-
+    
     playerContainer.addEventListener('mousemove', showControls);
     playerContainer.addEventListener('click', showControls);
 
-    // Initial show
-    showControls();
+    // Save Progress Interval
+    setInterval(() => {
+        if (!videoPlayer.paused && currentVideoPath) {
+            let t = videoPlayer.currentTime;
+            if (isTranscoding) t += streamOffset;
+            saveProgress(undefined, t);
+        }
+    }, 5000);
+
+    function saveProgress(path, time) {
+        const p = path || currentVideoPath;
+        const t = (time !== undefined) ? time : videoPlayer.currentTime;
+        if (!p) return;
+        fetch('/api/progress', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ video_path: p, timestamp: t }),
+        });
+    }
+
+    // Directory Browser
+    folderBtn.onclick = () => { 
+        modal.style.display = "block"; 
+        // Load current config into input
+        fetch('/api/config')
+            .then(r => r.json())
+            .then(config => {
+                if(config.video_directory) dirInput.value = config.video_directory;
+            });
+    };
+    
+    browseBtn.onclick = () => {
+        fetch('/api/choose-directory', { method: 'POST' })
+            .then(r => r.json())
+            .then(data => {
+                if (data.path) {
+                    dirInput.value = data.path;
+                }
+            });
+    };
+
+    closeSpan.onclick = () => { modal.style.display = "none"; };
+    window.onclick = (event) => { if (event.target == modal) modal.style.display = "none"; };
+    
+    saveSettings.onclick = () => {
+        fetch('/api/config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ video_directory: dirInput.value })
+        }).then(() => {
+            modal.style.display = "none";
+            loadVideos();
+        });
+    }
+
+    // Transcode Pref Toggle
+    transcodeToggle.addEventListener('change', () => {
+        isTranscoding = transcodeToggle.checked;
+        localStorage.setItem('transcodePref', isTranscoding);
+        if (currentVideoPath) {
+            // Save pos and reload
+            let t = videoPlayer.currentTime;
+            if (!transcodeToggle.checked) t += streamOffset; // was transcoding
+            saveProgress(currentVideoPath, t);
+            
+            const items = Array.from(document.querySelectorAll('.video-item'));
+            const el = items.find(e => e.dataset.path === currentVideoPath);
+            playVideo(currentVideoPath, el);
+        }
+    });
+
+    // --- Keyboard Shortcuts ---
+    document.addEventListener('keydown', (e) => {
+        // Ignore if typing in an input field
+        if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') return;
+
+        const key = e.key.toLowerCase();
+
+        if (key === ' ' || key === 'k') {
+            e.preventDefault(); // Prevent scrolling
+            togglePlay();
+            showControls();
+        } else if (key === 'f') {
+            fullscreenBtn.click();
+            showControls(); // Ensure controls are visible when entering/exiting
+        } else if (key === 'm') {
+            muteBtn.click();
+            showControls();
+        } else if (key === 'arrowright' || key === 'l') {
+            e.preventDefault(); // Prevent scrolling
+            seekRelative(5);
+            showControls();
+        } else if (key === 'arrowleft' || key === 'j') {
+            e.preventDefault(); // Prevent scrolling
+            seekRelative(-5);
+            showControls();
+        }
+    });
+
+    function seekRelative(seconds) {
+        if (!currentVideoPath) return; // Only seek if a video is loaded
+
+        let duration = isTranscoding ? totalDuration : videoPlayer.duration;
+        let currentTime = isTranscoding ? (streamOffset + videoPlayer.currentTime) : videoPlayer.currentTime;
+
+        if (!duration) duration = Infinity; // Safety
+
+        let newTime = currentTime + seconds;
+        newTime = Math.max(0, Math.min(duration, newTime));
+        
+        if (isTranscoding) {
+            // For transcoding, we update the stream offset and reload
+            // This mirrors the handleSeek logic for consistency
+            streamOffset = newTime;
+            
+            removeSubtitleTracks();
+
+            const encodedPath = encodeURIComponent(currentVideoPath);
+            let url = `/stream/${encodedPath}?startTime=${newTime}&vCodec=${currentVideoCodec || ''}`;
+            if(currentAudioTrack !== null) url += `&audioIndex=${currentAudioTrack}`;
+            
+            videoPlayer.src = url;
+            
+            if (currentSubtitleTrack !== -1) {
+                 enableSubtitle(currentSubtitleTrack, undefined, encodedPath);
+            }
+            videoPlayer.play();
+        } else {
+            videoPlayer.currentTime = newTime;
+        }
+    }
+
+    loadVideos();
 });

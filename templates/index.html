@@ -32,30 +32,95 @@
                     Your browser does not support the video tag.
                 </video>
                 <div class="controls" id="video-controls">
-                    <div class="progress-bar-container" id="progress-bar-container">
+                    <div class="progress-container" id="progress-bar-container">
                         <div class="progress-bar-background"></div>
-                        <div class="progress-bar" id="progress-bar"></div>
+                        <div class="progress-bar" id="progress-bar"></div> <!-- Buffered? -->
+                        <div class="scrubber-head" id="scrubber-head"></div> <!-- The dot -->
                         <div class="time-tooltip" id="time-tooltip">0:00</div>
                     </div>
-                    <div class="buttons">
-                        <button id="play-pause" title="Play/Pause">
-                            <svg class="icon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" fill="currentColor"/></svg>
-                        </button>
-                        
-                        <div class="volume-container">
-                            <button id="mute-btn" title="Mute">
-                                <svg class="icon" viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z" fill="currentColor"/></svg>
+                
+                    <div class="control-bar">
+                        <div class="left-controls">
+                            <button id="play-pause" title="Play (k)">
+                                <svg class="icon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" fill="#fff"/></svg>
                             </button>
-                            <input type="range" id="volume-slider" min="0" max="1" step="0.05" value="1" title="Volume">
+                            
+                            <div class="volume-container">
+                                <button id="mute-btn" title="Mute (m)">
+                                    <svg class="icon" viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z" fill="#fff"/></svg>
+                                </button>
+                                <input type="range" id="volume-slider" min="0" max="1" step="0.05" value="1" title="Volume">
+                            </div>
+
+                            <span id="time-display">0:00 / 0:00</span>
                         </div>
 
-                        <span id="time-display">0:00 / 0:00</span>
-                        
-                        <div class="spacer"></div>
-                        
-                        <button id="fullscreen-btn" title="Fullscreen">
-                            <svg class="icon" viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z" fill="currentColor"/></svg>
-                        </button>
+                        <div class="right-controls">
+                            <!-- CC Button -->
+                            <button id="cc-btn" title="Subtitles (c)" class="control-btn hidden">
+                                <svg class="icon" viewBox="0 0 24 24">
+                                  <path d="M19 4H5c-1.11 0-2 .9-2 2v12c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm-8 7H9.5v-.5h-2v3h2V13H11v1c0 .55-.45 1-1 1H7c-.55 0-1-.45-1-1v-4c0-.55.45-1 1-1h3c.55 0 1 .45 1 1v1zm7 0h-1.5v-.5h-2v3h2V13H18v1c0 .55-.45 1-1 1h14c-.55 0-1-.45-1-1v-4c0-.55.45-1 1-1h3c.55 0 1 .45 1 1v1z" fill="currentColor"/>
+                                  <path d="M0 0h24v24H0z" fill="none"/>
+                                </svg>
+                                <div class="red-line"></div> <!-- To show 'off' state clearly if desired -->
+                            </button>
+
+                            <!-- Settings Gear -->
+                            <div class="settings-container">
+                                <button id="settings-btn" title="Settings" class="control-btn">
+                                    <svg class="icon" viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z" fill="#fff"/></svg>
+                                </button>
+                                
+                                <!-- Settings Menu Popup -->
+                                <div class="settings-menu" id="settings-menu">
+                                    <!-- Main Menu -->
+                                    <div class="settings-panel" id="settings-main">
+                                        <div class="menu-row" id="row-speed">
+                                            <span>Playback Speed</span>
+                                            <span class="value-text" id="speed-value">Normal</span>
+                                            <span class="arrow">›</span>
+                                        </div>
+                                        <div class="menu-row" id="row-audio" style="display:none">
+                                            <span>Audio Track</span>
+                                            <span class="value-text" id="audio-value">Default</span>
+                                            <span class="arrow">›</span>
+                                        </div>
+                                        <div class="menu-row" id="row-subs" style="display:none">
+                                            <span>Subtitles</span>
+                                            <span class="value-text" id="subs-value">Off</span>
+                                            <span class="arrow">›</span>
+                                        </div>
+                                    </div>
+
+                                    <!-- Sub Menus (Initially Hidden) -->
+                                    <div class="settings-panel hidden" id="panel-speed">
+                                        <div class="menu-header" onclick="showPanel('settings-main')">‹ Playback Speed</div>
+                                        <div class="option" data-val="0.25">0.25</div>
+                                        <div class="option" data-val="0.5">0.5</div>
+                                        <div class="option" data-val="0.75">0.75</div>
+                                        <div class="option selected" data-val="1.0">Normal</div>
+                                        <div class="option" data-val="1.25">1.25</div>
+                                        <div class="option" data-val="1.5">1.5</div>
+                                        <div class="option" data-val="1.75">1.75</div>
+                                        <div class="option" data-val="2.0">2</div>
+                                    </div>
+                                    
+                                    <div class="settings-panel hidden" id="panel-audio">
+                                        <div class="menu-header" onclick="showPanel('settings-main')">‹ Audio Track</div>
+                                        <div id="audio-list"></div>
+                                    </div>
+
+                                    <div class="settings-panel hidden" id="panel-subs">
+                                        <div class="menu-header" onclick="showPanel('settings-main')">‹ Subtitles</div>
+                                        <div id="subs-list"></div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <button id="fullscreen-btn" title="Fullscreen (f)">
+                                <svg class="icon" viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z" fill="#fff"/></svg>
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
