@@ -524,6 +524,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     videoPlayer.addEventListener('play', () => {
          playPauseBtn.innerHTML = '<svg class="icon" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" fill="#fff"/></svg>';
+         isDragging = false; // Reset drag state to ensure updates resume
          showControls();
     });
     
