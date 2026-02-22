@@ -16,10 +16,15 @@
                 <button id="folder-btn" title="Change Video Folder">📁</button>
             </div>
             
-            <div class="compatibility-toggle" style="padding: 10px; font-size: 0.8em; color: #aaa;">
-                 <label title="Enable if video/audio doesn't play correctly">
-                    <input type="checkbox" id="transcode-toggle"> Compatibility Mode
-                 </label>
+            <div class="compatibility-box">
+                <div class="compat-header">
+                    <span>Compatibility Mode</span>
+                    <label class="switch">
+                        <input type="checkbox" id="transcode-toggle">
+                        <span class="slider round"></span>
+                    </label>
+                </div>
+                <p class="compat-desc">Enable if video fails to play or has no audio (MKV/AVI).</p>
             </div>
 
             <div id="video-list" class="video-list">

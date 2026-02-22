@@ -113,13 +113,31 @@ document.addEventListener('DOMContentLoaded', () => {
         isTranscoding = forceTranscode || transcodeToggle.checked;
         
         // Simpler auto-transcode check
+        let autoEnforced = false;
         if (!isTranscoding) {
             const ext = relPath.substring(relPath.lastIndexOf('.')).toLowerCase();
             if (['.mkv', '.avi', '.wmv', '.flv', '.mov', '.ts', '.m3u8'].includes(ext)) {
                  console.log("Auto-enabled compatibility mode");
                  isTranscoding = true;
                  transcodeToggle.checked = true; 
+                 autoEnforced = true;
             }
+        }
+
+        // Disable toggle if enforced
+        if (autoEnforced) {
+            transcodeToggle.disabled = true;
+            transcodeToggle.parentElement.title = "This format requires Compatibility Mode";
+            document.querySelector('.compatibility-box').classList.add('disabled');
+            document.querySelector('.compat-desc').textContent = "Required for this file format.";
+        } else {
+            transcodeToggle.disabled = false;
+            transcodeToggle.parentElement.title = "";
+            document.querySelector('.compatibility-box').classList.remove('disabled');
+            document.querySelector('.compat-desc').textContent = "Enable if video fails to play or has no audio (MKV/AVI).";
+            
+            // Re-apply correct state if we revisited a supported file
+            transcodeToggle.checked = isTranscoding;
         }
 
         streamOffset = 0;
