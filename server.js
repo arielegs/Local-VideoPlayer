@@ -6,9 +6,24 @@ const ffmpeg = require('fluent-ffmpeg');
 const ffmpegInstaller = require('@ffmpeg-installer/ffmpeg');
 const ffprobeInstaller = require('@ffprobe-installer/ffprobe');
 
-// Set ffmpeg path
-ffmpeg.setFfmpegPath(ffmpegInstaller.path);
-ffmpeg.setFfprobePath(ffprobeInstaller.path);
+// FIX: In packaged Electron apps, binaries inside ASAR archives may not be executable.
+// @ffmpeg-installer sometimes returns a path inside app.asar which fails.
+// We need to use "app.asar.unpacked" if available or ensure builder unpacks them.
+// A simpler fix is to rely on electron-builder's asarUnpack and direct path replacement if needed.
+
+let ffmpegPath = ffmpegInstaller.path;
+let ffprobePath = ffprobeInstaller.path;
+
+// Hack for ASAR paths: replace 'app.asar' with 'app.asar.unpacked'
+if (ffmpegPath.includes('app.asar')) {
+    ffmpegPath = ffmpegPath.replace('app.asar', 'app.asar.unpacked');
+}
+if (ffprobePath.includes('app.asar')) {
+    ffprobePath = ffprobePath.replace('app.asar', 'app.asar.unpacked');
+}
+
+ffmpeg.setFfmpegPath(ffmpegPath);
+ffmpeg.setFfprobePath(ffprobePath);
 
 const expressApp = express();
 

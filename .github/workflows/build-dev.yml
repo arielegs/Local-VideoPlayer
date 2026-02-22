@@ -68,16 +68,3 @@ jobs:
             dist/*.AppImage
             dist/*.exe
           if-no-files-found: warn
-
-      # Upload raw, unzipped files to GitHub Releases IF this push is a tag
-      - name: Upload Artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: LocalVideoPlayer-${{ matrix.os }}.zip  # <-- Added .zip here!
-          path: |
-            dist/*.dmg
-            dist/*.deb
-            dist/*.AppImage
-            dist/*.exe
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
