@@ -549,22 +549,32 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // Progress
-    videoPlayer.addEventListener('timeupdate', () => {
-        let currentTime = videoPlayer.currentTime;
-        let duration = videoPlayer.duration;
-        
-        if (isTranscoding) {
-             duration = totalDuration;
-             currentTime = streamOffset + videoPlayer.currentTime;
-        }
+    function updateProgress() {
+        if (!isDragging && currentVideoPath) {
+            let currentTime = videoPlayer.currentTime;
+            let duration = videoPlayer.duration;
+            
+            if (isTranscoding) {
+                 duration = totalDuration;
+                 currentTime = streamOffset + videoPlayer.currentTime;
+            }
 
-        if (!duration) duration = 1; 
-        if (!isDragging) {
+            if (!duration) duration = 1; 
+            
             const percent = (currentTime / duration) * 100;
             progressBar.style.width = `${percent}%`;
             timeDisplay.textContent = `${formatTime(currentTime)} / ${formatTime(duration)}`;
         }
-    });
+    }
+    
+    videoPlayer.addEventListener('timeupdate', updateProgress);
+    
+    // Fallback for sluggish timeupdate in compatibility mode
+    setInterval(() => {
+        if (isTranscoding && !videoPlayer.paused) {
+            updateProgress();
+        }
+    }, 100);
 
     // Seek Drag
     progressBarContainer.addEventListener('mousedown', (e) => {
@@ -695,7 +705,7 @@ document.addEventListener('DOMContentLoaded', () => {
     setInterval(() => {
         if (!videoPlayer.paused && currentVideoPath) {
             let t = videoPlayer.currentTime;
-            if (isTranscoding) t += streamOffset;
+            if (isTranscoding) t = streamOffset + Math.max(0, t - streamInitialTime);
             saveProgress(undefined, t);
         }
     }, 5000);

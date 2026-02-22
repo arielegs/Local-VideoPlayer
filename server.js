@@ -466,6 +466,9 @@ expressApp.get(/^\/stream\/(.*)/, (req, res) => {
             // command.seekOutput(startTime) for subtitles!
             
             command.seekInput(startTime);
+            
+            // Add output seek to trim the excess from the keyframe to the exact start time
+            command.outputOptions([`-ss ${startTime}`]);
          }
          
          // Standard probe size
