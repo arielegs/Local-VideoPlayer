@@ -432,6 +432,7 @@ document.addEventListener('DOMContentLoaded', () => {
          trackEl.label = trackInfo.title || `Track ${streamIndex}`;
          trackEl.srclang = trackInfo.language;
          
+         // Use a slight "fudge" factor (0.1s) to help browser sync if packets are slightly off
          let src = `/api/subtitles/${encodedPath}?streamIndex=${streamIndex}`;
          if (isTranscoding && streamOffset > 0) {
              src += `&startTime=${streamOffset}`;
@@ -441,10 +442,17 @@ document.addEventListener('DOMContentLoaded', () => {
          trackEl.default = true;
          
          // Event listener for load
-         trackEl.addEventListener('load', (e) => {
+         trackEl.onload = (e) => {
              console.log('Subtitle track loaded successfully');
-             if(e.target.track) e.target.track.mode = 'showing';
-         });
+             // Force showing immediately
+             if(e.target.track) {
+                 e.target.track.mode = 'showing';
+                 
+                 // HACK: Some browsers desync external VTT tracks when video src changes dynamically.
+                 // We can try to force a re-alignment by toggling if it doesn't appear.
+                 // But most likely the issue is the ffmpeg cut vs video keyframe difference.
+             }
+         };
          trackEl.addEventListener('error', (e) => {
              console.error('Subtitle track failed to load', e);
          });

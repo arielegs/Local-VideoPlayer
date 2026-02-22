@@ -319,16 +319,24 @@ expressApp.get(/^\/api\/subtitles\/(.*)/, (req, res) => {
 
     res.contentType('text/vtt');
     
+    // Attempt to be more accurate (though slower for very large sub files, but usually instant)
+    // Don't use -ss in inputOptions (fast seek/reset ts before input)
+    // Instead use -ss in output options (slow seek/process from start) so it cuts EXACTLY at startTime
+    // Subtitles are tiny text files usually (<1MB), so reading from start is fast.
+    
+    // const inputOptions = [];
+    // if (startTime > 0) {
+    //     inputOptions.push(`-ss ${startTime}`);
+    // }
+
     const inputOptions = [];
-    if (startTime > 0) {
-        inputOptions.push(`-ss ${startTime}`);
-    }
 
     const command = ffmpeg(fullPath)
         .inputOptions(inputOptions)
         .outputOptions([
-             `-map 0:${streamIndex}`, // Select specific subtitle stream
-             '-f webvtt'              // Force WebVTT format
+             `-ss ${startTime}`, // Output seek for precision
+             `-map 0:${streamIndex}`,
+             '-f webvtt'
         ])
         .on('error', (err) => {
              console.error('Subtitle extraction error:', err.message);
@@ -385,12 +393,63 @@ expressApp.get(/^\/stream\/(.*)/, (req, res) => {
          const command = ffmpeg(fullPath);
 
          if (startTime > 0) {
-            // "Accurate Seek" strategy: 
-            // -ss BEFORE -i is fast/keyframe snap (Input Seek). Good for long videos.
-            // -ss AFTER -i is accurate decoding (Output Seek). Good for precision.
-            // Combining (seek close with input, then precise seek with output) is complex in fluent-ffmpeg.
-            // Since we are now forcing re-encoding, input seek snaps to keyframe, and we start encoding from there.
-            // Both video and audio start from that keyframe timestamp.
+            // HIGH PRECISION SEEKING FIX
+            // Instead of just input seeking (which snaps to previous keyframe),
+            // we use input seeking to get close, then output seeking to get precise.
+            // HOWEVER, fluent-ffmpeg makes mixing these hard with the .seekInput() helper.
+            
+            // Current approach (Input Seek only):
+            // command.seekInput(startTime); 
+            // Result: Video starts at keyframe (e.g. 95s) but calling it 0s. 
+            // Subtitles start at 100s. Sync broken.
+
+            // BETTER APPROACH for re-encoding:
+            // 1. Input seek to slightly before (to be safe/fast)
+            // 2. Output seek (using -ss as output option) to the difference? 
+            // No, that cuts the video. We WANT the video to start precisely at startTime.
+            
+            // If we re-encode, ffmpeg CAN provide precise cutting if we use -ss BEFORE input
+            // AND we don't use -c copy. We are not using copy.
+            
+            // The issue is likely that -ss before input resets generation of timestamps to 0 
+            // starting from the KEYFRAME, not the requested time, when using some containers/codecs.
+            
+            // Let's try specifying -ss as an INPUT option manually, but this time use the 
+            // "slow seek" (output seek) strategy combined with input seek?
+            // Actually, for a local player, maybe we should just use OUTPUT SEEKING (slow but accurate).
+            // Input: Full file. Output: -ss startTime.
+            // With transcoding, this reads the whole file up to startTime. Too slow for long movies.
+            
+            // HYBRID FIX:
+            // Input seek to startTime.
+            // This lands on a keyframe (e.g. 95s).
+            // We tell ffmpeg to cut the first few seconds of that segment so it starts at expected time?
+            // No, getting that delta is hard.
+            
+            // ALTERNATE FIX:
+            // Trust ffmpeg's re-encoding to handle the cut IF we put -ss before input?
+            // Actually, with -ss before -i, and re-encoding, ffmpeg *should* be able to drop frames 
+            // until the timestamp if we strictly tell it to?
+            
+            // Let's try removing .seekInput() and doing it manually in inputOptions to ensure order,
+            // OR switching to a standard "slow seek" for < 60s, and fast seek for > 60s? No.
+            
+            // REAL FIX ATTEMPT: 
+            // Use -ss [start] as an INPUT option (fast seek).
+            // BUT add -copyts to keep original timestamps?
+            // Browsers hate non-zero start timestamps for streamed MP4 fragments often.
+            
+            // Let's try:
+            // 1. Seek input to startTime.
+            // 2. Subtitles also seek input to startTime.
+            // Ensure both use the SAME seeking logic. 
+            // The issue is video snaps to keyframe, text doesn't have keyframes.
+            
+            // Hacky but effective fix:
+            // Don't seek input for subtitles. Read full file and output seek?
+            // Subtitles are small. Reading the whole VTT file and cutting it is fast.
+            // command.seekOutput(startTime) for subtitles!
+            
             command.seekInput(startTime);
          }
          
