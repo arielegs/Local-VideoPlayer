@@ -112,12 +112,12 @@ document.addEventListener('DOMContentLoaded', () => {
         // Reset State
         isTranscoding = forceTranscode || transcodeToggle.checked;
         
-        // Simpler auto-transcode check
+        // Auto-transcode check for unsupported containers
         let autoEnforced = false;
         if (!isTranscoding) {
             const ext = relPath.substring(relPath.lastIndexOf('.')).toLowerCase();
             if (['.mkv', '.avi', '.wmv', '.flv', '.mov', '.ts', '.m3u8'].includes(ext)) {
-                 console.log("Auto-enabled compatibility mode");
+                 console.log("Auto-enabled compatibility mode (container)");
                  isTranscoding = true;
                  transcodeToggle.checked = true; 
                  autoEnforced = true;
@@ -169,6 +169,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 totalDuration = meta.duration || 0;
                 currentVideoCodec = meta.videoCodec;
+
+                // Auto-enable compatibility mode for files with non-browser-playable audio
+                // (e.g. MP4 with AC3/DTS/EAC3/FLAC audio codecs)
+                if (!isTranscoding && !autoEnforced && meta.audioTracks && meta.audioTracks.length > 0) {
+                    const browserAudioCodecs = ['aac', 'mp3', 'opus', 'vorbis', 'flac'];
+                    const firstAudio = meta.audioTracks[0];
+                    if (firstAudio.codec && !browserAudioCodecs.includes(firstAudio.codec.toLowerCase())) {
+                        console.log(`Auto-enabled compatibility mode (audio codec: ${firstAudio.codec})`);
+                        isTranscoding = true;
+                        transcodeToggle.checked = true;
+                        autoEnforced = true;
+                        transcodeToggle.disabled = true;
+                        transcodeToggle.parentElement.title = "This file's audio requires Compatibility Mode";
+                        document.querySelector('.compatibility-box').classList.add('disabled');
+                        document.querySelector('.compat-desc').textContent = `Audio codec (${firstAudio.codec}) requires transcoding.`;
+                    }
+                }
                 
                 setupAudioMenu(meta.audioTracks);
                 setupSubtitleMenu(meta.subtitleTracks, encodedPath);
@@ -549,22 +566,34 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // Progress
-    videoPlayer.addEventListener('timeupdate', () => {
-        let currentTime = videoPlayer.currentTime;
-        let duration = videoPlayer.duration;
-        
-        if (isTranscoding) {
-             duration = totalDuration;
-             currentTime = streamOffset + videoPlayer.currentTime;
-        }
+    function updateProgress() {
+        if (!isDragging && currentVideoPath) {
+            let currentTime = videoPlayer.currentTime;
+            let duration = videoPlayer.duration;
+            
+            if (isTranscoding) {
+                 duration = totalDuration;
+                 currentTime = streamOffset + videoPlayer.currentTime;
+            }
 
-        if (!duration) duration = 1; 
-        if (!isDragging) {
-            const percent = (currentTime / duration) * 100;
+            // Guard against NaN / Infinity / zero durations
+            if (!duration || !isFinite(duration) || isNaN(duration)) duration = totalDuration || 1;
+            if (isNaN(currentTime) || !isFinite(currentTime)) currentTime = streamOffset || 0;
+            
+            const percent = Math.min(100, Math.max(0, (currentTime / duration) * 100));
             progressBar.style.width = `${percent}%`;
             timeDisplay.textContent = `${formatTime(currentTime)} / ${formatTime(duration)}`;
         }
-    });
+    }
+    
+    videoPlayer.addEventListener('timeupdate', updateProgress);
+    
+    // Fallback for sluggish timeupdate in compatibility mode
+    setInterval(() => {
+        if (isTranscoding && !videoPlayer.paused) {
+            updateProgress();
+        }
+    }, 100);
 
     // Seek Drag
     progressBarContainer.addEventListener('mousedown', (e) => {
@@ -653,7 +682,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Formatting
     function formatTime(seconds) {
-        if(isNaN(seconds)) return "0:00";
+        if(isNaN(seconds) || !isFinite(seconds) || seconds < 0) return "0:00";
         const m = Math.floor(seconds / 60);
         const s = Math.floor(seconds % 60);
         const h = Math.floor(m / 60);
@@ -695,7 +724,7 @@ document.addEventListener('DOMContentLoaded', () => {
     setInterval(() => {
         if (!videoPlayer.paused && currentVideoPath) {
             let t = videoPlayer.currentTime;
-            if (isTranscoding) t += streamOffset;
+            if (isTranscoding) t = streamOffset + videoPlayer.currentTime;
             saveProgress(undefined, t);
         }
     }, 5000);
