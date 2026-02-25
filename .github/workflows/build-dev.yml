@@ -41,7 +41,7 @@ jobs:
         if: matrix.os == 'macos-latest'
         run: npm run build:mac
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_RELEASE_TOKEN }}
 
       # Build Linux (.deb and .AppImage)
       - name: Build for Linux
