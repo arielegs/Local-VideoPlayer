@@ -9,6 +9,9 @@ on:
     tags:
       - 'v*' # Triggers on tags that start with 'v', e.g., v1.0.0
 
+permissions:
+  contents: write
+
 jobs:
   build:
     # Use a matrix strategy to run jobs on Windows, macOS, and Linux
@@ -39,21 +42,21 @@ jobs:
       # Build macOS (.dmg)
       - name: Build for macOS
         if: matrix.os == 'macos-latest'
-        run: npm run build:mac
+        run: npx electron-builder --mac --publish never
         env:
-          GH_TOKEN: ${{ secrets.GH_RELEASE_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # Build Linux (.deb and .AppImage)
       - name: Build for Linux
         if: matrix.os == 'ubuntu-latest'
-        run: npm run build:linux
+        run: npx electron-builder --linux --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # Build Windows (.exe)
       - name: Build for Windows
         if: matrix.os == 'windows-latest'
-        run: npm run build:win
+        run: npx electron-builder --win --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
