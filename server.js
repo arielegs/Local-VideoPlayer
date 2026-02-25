@@ -408,67 +408,13 @@ expressApp.get(/^\/stream\/(.*)/, (req, res) => {
          const command = ffmpeg(fullPath);
 
          if (startTime > 0) {
-            // HIGH PRECISION SEEKING FIX
-            // Instead of just input seeking (which snaps to previous keyframe),
-            // we use input seeking to get close, then output seeking to get precise.
-            // HOWEVER, fluent-ffmpeg makes mixing these hard with the .seekInput() helper.
-            
-            // Current approach (Input Seek only):
-            // command.seekInput(startTime); 
-            // Result: Video starts at keyframe (e.g. 95s) but calling it 0s. 
-            // Subtitles start at 100s. Sync broken.
-
-            // BETTER APPROACH for re-encoding:
-            // 1. Input seek to slightly before (to be safe/fast)
-            // 2. Output seek (using -ss as output option) to the difference? 
-            // No, that cuts the video. We WANT the video to start precisely at startTime.
-            
-            // If we re-encode, ffmpeg CAN provide precise cutting if we use -ss BEFORE input
-            // AND we don't use -c copy. We are not using copy.
-            
-            // The issue is likely that -ss before input resets generation of timestamps to 0 
-            // starting from the KEYFRAME, not the requested time, when using some containers/codecs.
-            
-            // Let's try specifying -ss as an INPUT option manually, but this time use the 
-            // "slow seek" (output seek) strategy combined with input seek?
-            // Actually, for a local player, maybe we should just use OUTPUT SEEKING (slow but accurate).
-            // Input: Full file. Output: -ss startTime.
-            // With transcoding, this reads the whole file up to startTime. Too slow for long movies.
-            
-            // HYBRID FIX:
-            // Input seek to startTime.
-            // This lands on a keyframe (e.g. 95s).
-            // We tell ffmpeg to cut the first few seconds of that segment so it starts at expected time?
-            // No, getting that delta is hard.
-            
-            // ALTERNATE FIX:
-            // Trust ffmpeg's re-encoding to handle the cut IF we put -ss before input?
-            // Actually, with -ss before -i, and re-encoding, ffmpeg *should* be able to drop frames 
-            // until the timestamp if we strictly tell it to?
-            
-            // Let's try removing .seekInput() and doing it manually in inputOptions to ensure order,
-            // OR switching to a standard "slow seek" for < 60s, and fast seek for > 60s? No.
-            
-            // REAL FIX ATTEMPT: 
-            // Use -ss [start] as an INPUT option (fast seek).
-            // BUT add -copyts to keep original timestamps?
-            // Browsers hate non-zero start timestamps for streamed MP4 fragments often.
-            
-            // Let's try:
-            // 1. Seek input to startTime.
-            // 2. Subtitles also seek input to startTime.
-            // Ensure both use the SAME seeking logic. 
-            // The issue is video snaps to keyframe, text doesn't have keyframes.
-            
-            // Hacky but effective fix:
-            // Don't seek input for subtitles. Read full file and output seek?
-            // Subtitles are small. Reading the whole VTT file and cutting it is fast.
-            // command.seekOutput(startTime) for subtitles!
-            
+            // Use input seek only. With re-encoding (not copy), ffmpeg decodes
+            // from the nearest keyframe and precisely starts output at the
+            // requested timestamp. Combined with -reset_timestamps 1 the
+            // output starts at PTS 0 which is what the browser expects.
+            // Do NOT add an output -ss as well — that would double-seek
+            // (input seek resets to 0, then output -ss skips again).
             command.seekInput(startTime);
-            
-            // Add output seek to trim the excess from the keyframe to the exact start time
-            command.outputOptions([`-ss ${startTime}`]);
          }
          
          // Standard probe size
