@@ -254,28 +254,40 @@ video {
 .progress-container {
     position: relative;
     width: 100%;
+    height: 16px; /* Larger hit area to prevent flickering */
+    cursor: pointer;
+    margin-bottom: 4px;
+    display: flex;
+    align-items: center;
+}
+
+.progress-bar-background {
+    position: absolute;
+    left: 0;
+    width: 100%;
     height: 5px;
     background: rgba(255,255,255,0.2);
-    cursor: pointer;
-    margin-bottom: 10px;
+    border-radius: 2px;
+    transition: height 0.1s;
+    display: block;
+}
+
+.progress-container:hover .progress-bar-background {
+    height: 8px;
+}
+
+.progress-bar {
+    position: absolute;
+    left: 0;
+    height: 5px;
+    background: #f00; /* YouTube red */
+    width: 0;
     border-radius: 2px;
     transition: height 0.1s;
 }
 
-.progress-container:hover {
-    height: 8px; /* Expand on hover */
-}
-
-.progress-bar-background {
-    display: none; /* Merged into container bg */
-}
-
-.progress-bar {
-    height: 100%;
-    background: #f00; /* YouTube red */
-    width: 0;
-    border-radius: 2px;
-    position: relative;
+.progress-container:hover .progress-bar {
+    height: 8px;
 }
 
 .scrubber-head {
@@ -288,7 +300,7 @@ video {
 
 .time-tooltip {
     position: absolute;
-    bottom: 15px;
+    bottom: 20px;
     background: rgba(0,0,0,0.8);
     color: #fff;
     padding: 4px 8px;
