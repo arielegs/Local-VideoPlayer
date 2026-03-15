@@ -48,7 +48,8 @@
     },
     "mac": {
       "target": "dmg",
-      "icon": "icon.png"
+      "icon": "icon.png",
+      "identity": null
     },
     "files": [
       "**/*",
