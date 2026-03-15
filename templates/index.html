@@ -2,9 +2,12 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'self' blob:; connect-src 'self';">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self' blob:; connect-src 'self';">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="A robust local video player with subtitle support, volume boost, and format compatibility.">
     <title>Local Video Player</title>
+    <!-- Prevent favicon 404 errors -->
+    <link rel="icon" href="data:,">
     <!-- Force CSS refresh -->
     <link rel="stylesheet" href="/static/style.css?v=14">
 </head>
@@ -20,7 +23,7 @@
                 <div class="compat-header">
                     <span>Compatibility Mode</span>
                     <label class="switch">
-                        <input type="checkbox" id="transcode-toggle">
+                        <input type="checkbox" id="transcode-toggle" aria-label="Toggle Compatibility Mode">
                         <span class="slider round"></span>
                     </label>
                 </div>
@@ -31,7 +34,7 @@
                 <!-- Videos will be populated here -->
             </div>
         </div>
-        <div class="main-content">
+        <main class="main-content">
             <div class="player-container" id="player-container">
                 <video id="video-player">
                     Your browser does not support the video tag.
@@ -58,7 +61,7 @@
                                 <button id="mute-btn" title="Mute (m)">
                                     <svg class="icon" viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z" fill="#fff"/></svg>
                                 </button>
-                                <input type="range" id="volume-slider" min="0" max="1.5" step="0.05" value="1">
+                                <input type="range" id="volume-slider" min="0" max="1.5" step="0.05" value="1" aria-label="Volume slider">
                             </div>
 
                             <span id="time-display">0:00 / 0:00</span>
@@ -136,7 +139,7 @@
             <div class="video-info">
                 <h2 id="current-video-title">Select a video to play</h2>
             </div>
-        </div>
+        </main>
     </div>
 
     <!-- Simple modal to change directory -->
