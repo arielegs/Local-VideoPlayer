@@ -189,20 +189,25 @@ expressApp.get('/api/config', (req, res) => {
   // Dynamic About/Build Info API
   expressApp.get('/api/about', (req, res) => {
       try {
-          // Use main.js stats as a proxy for the last "build" or code change time
-          const stats = fs.statSync(path.join(__dirname, 'main.js'));
           let version = '1.0.0';
           try {
               const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8'));
               version = pkg.version;
           } catch(e) {}
           
+          let buildString = "Development Build";
+          if (app.isPackaged) {
+              const stats = fs.statSync(process.execPath);
+              const bd = new Date(stats.mtime);
+              buildString = bd.toLocaleDateString() + ' (' + bd.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) + ')';
+          }
+          
           res.json({
               version: version,
-              buildDate: stats.mtime
+              buildDate: buildString
           });
       } catch (err) {
-          res.json({ version: '1.0.0', buildDate: new Date() });
+          res.json({ version: '1.0.0', buildDate: "Unknown" });
       }
   });
 

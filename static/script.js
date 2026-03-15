@@ -860,9 +860,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         fetch('/api/about').then(r => r.json()).then(about => {
             document.getElementById('app-version').innerText = about.version;
-            const bd = new Date(about.buildDate);
-            document.getElementById('app-build-date').innerText = 
-                bd.toLocaleDateString() + ' (' + bd.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) + ')';
+            document.getElementById('app-build-date').innerText = about.buildDate;
         });
     }
 
