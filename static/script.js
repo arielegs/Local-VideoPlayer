@@ -573,10 +573,23 @@ document.addEventListener('DOMContentLoaded', () => {
             gainNode = audioCtx.createGain();
             mediaSource.connect(gainNode);
             gainNode.connect(audioCtx.destination);
+            
+            let val = parseFloat(volumeSlider.value);
+            gainNode.gain.value = val > 1 ? Math.pow(val, 3) : 1;
         } catch(e) {
             console.error("Audio Context init failed", e);
         }
     }
+
+    // Initialize audio context on first user interaction to prevent audio cut-out when volume exceeds 100%
+    const unlockAudio = () => {
+        if (!audioCtx) initAudio();
+        if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+        document.removeEventListener('click', unlockAudio);
+        document.removeEventListener('keydown', unlockAudio);
+    };
+    document.addEventListener('click', unlockAudio);
+    document.addEventListener('keydown', unlockAudio);
 
     const volumeOsd = document.getElementById('volume-osd');
     let volumeOsdTimeout;
@@ -622,8 +635,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             videoPlayer.volume = Math.min(1, val);
         }
-        volumeSlider.title = `Volume: ${Math.round(val * 100)}%`;
-        
+
         updateVolumeVisuals(val);
     });
 
@@ -647,18 +659,6 @@ document.addEventListener('DOMContentLoaded', () => {
             let currentTime = videoPlayer.currentTime;
             let duration = videoPlayer.duration;
             
-
-    progressBarContainer.addEventListener('mousemove', (e) => {
-        const rect = progressBarContainer.getBoundingClientRect();
-        let pos = (e.clientX - rect.left) / rect.width;
-        pos = Math.max(0, Math.min(1, pos));
-        
-        const maxDuration = (isTranscoding && totalDuration) ? totalDuration : (videoPlayer.duration || 0);
-        const hoverTime = pos * maxDuration;
-        
-        timeTooltip.style.left = `${pos * 100}%`;
-        timeTooltip.textContent = formatTime(hoverTime);
-    });
             if (isTranscoding) {
                  duration = totalDuration;
                  currentTime = streamOffset + videoPlayer.currentTime;
@@ -673,7 +673,7 @@ document.addEventListener('DOMContentLoaded', () => {
             timeDisplay.textContent = `${formatTime(currentTime)} / ${formatTime(duration)}`;
         }
     }
-    
+
     videoPlayer.addEventListener('timeupdate', updateProgress);
     
     // Fallback for sluggish timeupdate in compatibility mode
@@ -688,11 +688,26 @@ document.addEventListener('DOMContentLoaded', () => {
         isDragging = true;
         handleSeek(e, false);
     });
-    
-    document.addEventListener('mousemove', (e) => {
-        if (isDragging) handleSeek(e, false);
+
+    progressBarContainer.addEventListener('mousemove', (e) => {
+        const rect = progressBarContainer.getBoundingClientRect();
+        let pos = (e.clientX - rect.left) / rect.width;
+        pos = Math.max(0, Math.min(1, pos));
+        
+        const maxDuration = (isTranscoding && totalDuration) ? totalDuration : (videoPlayer.duration || 0);
+        const hoverTime = pos * maxDuration;
+        
+        timeTooltip.textContent = formatTime(hoverTime);
+        
+        // Prevent tooltip from overflowing edges
+        const ttWidth = timeTooltip.offsetWidth || 50; 
+        const minX = ttWidth / 2;
+        const maxX = rect.width - (ttWidth / 2);
+        const clampedX = Math.max(minX, Math.min(maxX, pos * rect.width));
+        
+        timeTooltip.style.left = `${clampedX}px`;
     });
-    
+
     document.addEventListener('mouseup', (e) => {
         if (isDragging) {
             handleSeek(e, true);
