@@ -62,12 +62,20 @@ const LAST_PLAYED_FILE = path.join(DATA_DIR, 'last_played.json');
 
 // Helper functions (same logic as Python)
 function loadConfig() {
+    let config = { "video_directory": "", "allow_external": false };
     if (fs.existsSync(CONFIG_FILE)) {
         try {
-            return JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
-        } catch (e) { return { "video_directory": "" }; }
+            const fileConfig = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
+            config = { ...config, ...fileConfig };
+        } catch (e) { }
     }
-    return { "video_directory": "" };
+    
+    // Sync to electron main process
+    if (typeof global !== 'undefined') {
+        global.allowExternal = config.allow_external;
+    }
+    
+    return config;
 }
 
 function saveProgress(videoPath, timestamp) {
@@ -178,18 +186,48 @@ expressApp.get('/api/config', (req, res) => {
     res.json(loadConfig());
 });
 
-expressApp.post('/api/config', (req, res) => {
-    const newDir = req.body.video_directory;
-    if (newDir) {
-        const config = loadConfig();
-        config.video_directory = newDir;
+  // Dynamic About/Build Info API
+  expressApp.get('/api/about', (req, res) => {
+      try {
+          // Use main.js stats as a proxy for the last "build" or code change time
+          const stats = fs.statSync(path.join(__dirname, 'main.js'));
+          let version = '1.0.0';
+          try {
+              const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8'));
+              version = pkg.version;
+          } catch(e) {}
+          
+          res.json({
+              version: version,
+              buildDate: stats.mtime
+          });
+      } catch (err) {
+          res.json({ version: '1.0.0', buildDate: new Date() });
+      }
+  });
+
+  expressApp.post('/api/config', (req, res) => {
+
+    if (req.body.video_directory !== undefined) {
+        config.video_directory = req.body.video_directory;
+        updated = true;
+    }
+    
+    if (req.body.allow_external !== undefined) {
+        config.allow_external = !!req.body.allow_external;
+        if (typeof global !== 'undefined') {
+            global.allowExternal = config.allow_external;
+        }
+        updated = true;
+    }
+
+    if (updated) {
         fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 4));
-        res.json({ "status": "success", "video_directory": newDir });
+        res.json({ "status": "success", "config": config });
     } else {
-        res.status(400).json({ "status": "error" });
+        res.status(400).json({ "status": "error", "message": "No valid fields provided" });
     }
 });
-
 // Videos API
 expressApp.get('/api/videos', (req, res) => {
     const config = loadConfig();

@@ -9,14 +9,17 @@
     <!-- Prevent favicon 404 errors -->
     <link rel="icon" href="data:,">
     <!-- Force CSS refresh -->
-    <link rel="stylesheet" href="/static/style.css?v=14">
+    <link rel="stylesheet" href="/static/style.min.css">
 </head>
 <body>
     <div class="container">
         <div class="sidebar">
             <div class="header">
                 <h2>Videos</h2>
-                <button id="folder-btn" title="Change Video Folder">📁</button>
+                <div style="display: flex; gap: 8px;">
+                    <button class="icon-btn" id="app-settings-btn" title="App Settings">⚙️</button>
+                    <button class="icon-btn" id="folder-btn" title="Change Video Folder">📁</button>
+                </div>
             </div>
             
             <div class="compatibility-box">
@@ -143,19 +146,66 @@
     </div>
 
     <!-- Simple modal to change directory -->
-    <div id="settings-modal" class="modal">
+    <div id="folder-modal" class="modal">
         <div class="modal-content">
-            <span class="close">&times;</span>
-            <h3>Settings</h3>
+            <span class="close" id="folder-close">&times;</span>
+            <h3 style="margin-top: 0;">Change Video Folder</h3>
             <div class="setting-row">
                 <input type="text" id="video-dir-input" placeholder="Select or enter path...">
                 <button id="browse-btn" class="secondary-btn">Browse...</button>
             </div>
-            <button id="save-settings" class="primary-btn">Save</button>
+        </div>
+    </div>
+
+    <!-- App Settings Modal -->
+    <div id="settings-modal" class="modal">
+        <div class="modal-content">
+            <span class="close" id="settings-close">&times;</span>
+            <div class="modal-tabs">
+                <button class="tab-btn active" onclick="switchModalTab('privacy')">Privacy</button>
+                <button class="tab-btn" onclick="switchModalTab('about')">About</button>
+            </div>
+
+            <div id="tab-privacy" class="modal-tab-content active">
+                <h3>Privacy Shield</h3>
+                <div class="setting-row">
+                    <span>Allow External Network Connections</span>
+                    <label class="switch">
+                        <input type="checkbox" id="allow-external-toggle">
+                        <span class="slider round"></span>
+                    </label>
+                </div>
+                <p style="font-size: 0.85em; color: #aaa; margin-top: 5px;">When disabled, Electron will act as an absolute firewall, blocking all background tracking and requests not bound for localhost.</p>
+            </div>
+
+            <div id="tab-about" class="modal-tab-content" style="display: none;">
+                <div style="text-align: center; margin-bottom: 20px;">
+                    <h3 style="margin-bottom: 5px;">Local Video Player</h3>
+                    <p style="color: #4CAF50; margin: 0; font-weight: bold;">v<span id="app-version">...</span></p>
+                </div>
+                <div style="background: #2a2a2a; border-radius: 6px; padding: 12px; font-size: 0.9em; margin-bottom: 15px;">
+                    <p style="margin: 5px 0;"><strong>Build Date:</strong> <span id="app-build-date">Loading...</span></p>
+                    <p style="margin: 5px 0;"><strong>License:</strong> ISC</p>
+                    <p style="margin: 5px 0;"><strong>Developer:</strong> <a href="https://github.com/arielegs" target="_blank" style="color: #4CAF50; text-decoration: none; font-weight: bold; border-bottom: 1px dashed #4CAF50;" title="Open GitHub Profile">Arie Legs <span style="font-size: 0.85em; margin-left: 2px;">↗</span></a></p>
+                </div>
+                <div style="font-size: 0.9em; line-height: 1.5; color: #ccc;">
+                    <strong>Engine Details:</strong>
+                    <ul style="margin-top: 5px; padding-left: 20px;">
+                        <li>Electron & Chromium (Renderer)</li>
+                        <li>Node.js + Express (Local Backend)</li>
+                        <li>FFmpeg / FFprobe (Media Processing)</li>
+                    </ul>
+                </div>
+                <hr style="border: 0; border-top: 1px solid #444; margin: 15px 0;">
+                <p style="font-size: 0.85em; line-height: 1.4; text-align: center; color: #999;">
+                    A lightweight, fully offline video player explicitly built for privacy. 
+                    <br>Your data and media processing never leave your machine.
+                </p>
+            </div>
         </div>
     </div>
 
     <!-- Force JS refresh -->
-    <script src="/static/script.js?v=12"></script>
+    <script src="/static/script.min.js"></script>
 </body>
 </html>

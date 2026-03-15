@@ -116,16 +116,25 @@ input:checked + .slider:before {
 }
 /* End Toggle Switch */
 
+#app-settings-btn,
 #folder-btn {
     background: none;
     border: none;
     color: #aeaeae;
     cursor: pointer;
     font-size: 1.2rem;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 32px;
+    width: 32px;
 }
 
+#app-settings-btn:hover,
 #folder-btn:hover {
     color: #fff;
+    transform: scale(1.1);
 }
 
 .video-list {
@@ -773,7 +782,7 @@ button:hover { opacity: 1; }
 .modal {
     display: none;
     position: fixed;
-    z-index: 100;
+    z-index: 2147483647;
     left: 0;
     top: 0;
     width: 100%;
@@ -891,3 +900,27 @@ button#save-settings:hover {
 .volume-osd.show {
     opacity: 1;
 }
+
+.modal-tabs {
+  display: flex;
+  margin-bottom: 20px;
+  border-bottom: 1px solid #444;
+}
+.tab-btn {
+  background: transparent;
+  border: none;
+  color: #ccc;
+  padding: 10px 20px;
+  cursor: pointer;
+  font-size: 14px;
+  outline: none;
+}
+.tab-btn:hover { color: #fff; }
+.tab-btn.active {
+  color: #ff3b3b;
+  border-bottom: 2px solid #ff3b3b;
+  font-weight: bold;
+}
+.modal-tab-content { display: none; }
+.modal-tab-content.active { display: block; }
+

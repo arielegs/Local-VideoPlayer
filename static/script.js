@@ -5,10 +5,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const seekOverlay = document.getElementById('seek-overlay');
     
     // Modal & Config
-    const modal = document.getElementById('settings-modal');
+    const folderModal = document.getElementById('folder-modal');
+    const settingsModal = document.getElementById('settings-modal');
     const folderBtn = document.getElementById("folder-btn");
-    const closeSpan = document.getElementsByClassName("close")[0];
-    const saveSettings = document.getElementById("save-settings");
+    const appSettingsBtn = document.getElementById("app-settings-btn");
+    const folderClose = document.getElementById("folder-close");
+    const settingsClose = document.getElementById("settings-close");
     const browseBtn = document.getElementById("browse-btn");
     const dirInput = document.getElementById("video-dir-input");
     const transcodeToggle = document.getElementById("transcode-toggle");
@@ -845,38 +847,83 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Directory Browser
     folderBtn.onclick = () => { 
-        modal.style.display = "block"; 
-        // Load current config into input
-        fetch('/api/config')
-            .then(r => r.json())
-            .then(config => {
-                if(config.video_directory) dirInput.value = config.video_directory;
-            });
+        folderModal.style.display = "block"; 
+        fetch('/api/config').then(r => r.json()).then(config => {
+            if(config.video_directory) dirInput.value = config.video_directory;
+        });
     };
-    
+
+    appSettingsBtn.onclick = () => {
+        settingsModal.style.display = "block";
+        fetch('/api/config').then(r => r.json()).then(config => {
+            document.getElementById('allow-external-toggle').checked = config.allow_external === true;
+        });
+        fetch('/api/about').then(r => r.json()).then(about => {
+            document.getElementById('app-version').innerText = about.version;
+            const bd = new Date(about.buildDate);
+            document.getElementById('app-build-date').innerText = 
+                bd.toLocaleDateString() + ' (' + bd.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) + ')';
+        });
+    }
+
     browseBtn.onclick = () => {
         fetch('/api/choose-directory', { method: 'POST' })
             .then(r => r.json())
             .then(data => {
                 if (data.path) {
                     dirInput.value = data.path;
+                    dirInput.dispatchEvent(new Event('input'));
                 }
             });
     };
 
-    closeSpan.onclick = () => { modal.style.display = "none"; };
-    window.onclick = (event) => { if (event.target == modal) modal.style.display = "none"; };
+    folderClose.onclick = () => { folderModal.style.display = "none"; };
+    settingsClose.onclick = () => { settingsModal.style.display = "none"; };
     
-    saveSettings.onclick = () => {
+    window.onclick = (event) => { 
+        if (event.target == folderModal) folderModal.style.display = "none"; 
+        if (event.target == settingsModal) settingsModal.style.display = "none"; 
+    };
+    
+    window.switchModalTab = function(tabName) {
+        document.querySelectorAll('.modal-tab-content').forEach(tab => {
+            tab.style.display = 'none';
+            tab.classList.remove('active');
+            tab.classList.remove('hidden');
+        });
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.classList.remove('active');
+            if (btn.innerText.toLowerCase() === tabName) {
+                btn.classList.add('active');
+            }
+        });
+        const target = document.getElementById('tab-' + tabName);
+        if (target) {
+            target.style.display = 'block';
+            target.classList.add('active');
+            target.classList.remove('hidden');
+        }
+    }
+
+    dirInput.addEventListener('input', () => {
         fetch('/api/config', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ video_directory: dirInput.value })
         }).then(() => {
-            modal.style.display = "none";
             loadVideos();
         });
-    }
+    });
+
+    document.getElementById('allow-external-toggle').addEventListener('change', (e) => {
+        fetch('/api/config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                allow_external: e.target.checked
+            })
+        });
+    });
 
     // Transcode Pref Toggle
     transcodeToggle.addEventListener('change', () => {
