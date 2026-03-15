@@ -560,10 +560,86 @@ document.addEventListener('DOMContentLoaded', () => {
             iconPath.setAttribute('d', 'M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z');
         }
     });
+
+    let audioCtx;
+    let gainNode;
+    let mediaSource;
+
+    function initAudio() {
+        if (audioCtx) return;
+        try {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            mediaSource = audioCtx.createMediaElementSource(videoPlayer);
+            gainNode = audioCtx.createGain();
+            mediaSource.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+        } catch(e) {
+            console.error("Audio Context init failed", e);
+        }
+    }
+
+    const volumeOsd = document.getElementById('volume-osd');
+    let volumeOsdTimeout;
+
+    function updateVolumeVisuals(val, showOsd = true) {
+        let percentage = Math.round(val * 100);
+        
+        // Dynamically color the slider track to show the 100% threshold
+        const pct = (val / 1.5) * 100;
+        if (val <= 1.0) {
+            volumeSlider.style.background = `linear-gradient(to right, #fff ${pct}%, rgba(255,255,255,0.3) ${pct}%)`;
+        } else {
+            // 1.0 (100%) out of 1.5 is 66.66%
+            volumeSlider.style.background = `linear-gradient(to right, #fff 66.66%, #f00 66.66%, #f00 ${pct}%, rgba(255,255,255,0.3) ${pct}%)`;
+        }
+        
+        if (!showOsd) return;
+
+        // Briefly show the On-Screen Display text overlay (like VLC)
+        if (volumeOsd) {
+            volumeOsd.textContent = `Volume: ${percentage}%`;
+            volumeOsd.classList.add('show');
+            clearTimeout(volumeOsdTimeout);
+            volumeOsdTimeout = setTimeout(() => {
+                volumeOsd.classList.remove('show');
+            }, 1000);
+        }
+    }
     
     volumeSlider.addEventListener('input', (e) => {
-        videoPlayer.volume = e.target.value;
+        let val = parseFloat(e.target.value);
+        if (val > 1 && !audioCtx) {
+            initAudio();
+        }
+        
+        if (audioCtx) {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            videoPlayer.volume = Math.min(1, val);
+            // By default, Web Audio linear gain of 1.5 only adds ~+3.5dB (barely noticeable).
+            // Cubing the value effectively maps 150% to roughly +10.5dB (sounds twice as loud), 
+            // giving that classic "VLC volume boost" signature!
+            gainNode.gain.value = val > 1 ? Math.pow(val, 3) : 1;
+        } else {
+            videoPlayer.volume = Math.min(1, val);
+        }
+        volumeSlider.title = `Volume: ${Math.round(val * 100)}%`;
+        
+        updateVolumeVisuals(val);
     });
+
+    // Also allow scrolling to adjust volume when mouse is over the container
+    volumeSlider.parentElement.addEventListener('wheel', (e) => {
+        e.preventDefault(); // Prevent page scroll
+        let currentVal = parseFloat(volumeSlider.value);
+        let delta = e.deltaY < 0 ? 0.05 : -0.05; // 5% chunks up/down
+        let newVal = Math.max(0, Math.min(1.5, currentVal + delta)); // Clamp to 0-1.5
+        volumeSlider.value = newVal;
+        // Trigger manual input event so audio updates and visuals paint
+        volumeSlider.dispatchEvent(new Event('input'));
+    });
+
+    // Initialize track color state on load
+    updateVolumeVisuals(parseFloat(volumeSlider.value), false);
 
     // Progress
     function updateProgress() {
@@ -571,6 +647,18 @@ document.addEventListener('DOMContentLoaded', () => {
             let currentTime = videoPlayer.currentTime;
             let duration = videoPlayer.duration;
             
+
+    progressBarContainer.addEventListener('mousemove', (e) => {
+        const rect = progressBarContainer.getBoundingClientRect();
+        let pos = (e.clientX - rect.left) / rect.width;
+        pos = Math.max(0, Math.min(1, pos));
+        
+        const maxDuration = (isTranscoding && totalDuration) ? totalDuration : (videoPlayer.duration || 0);
+        const hoverTime = pos * maxDuration;
+        
+        timeTooltip.style.left = `${pos * 100}%`;
+        timeTooltip.textContent = formatTime(hoverTime);
+    });
             if (isTranscoding) {
                  duration = totalDuration;
                  currentTime = streamOffset + videoPlayer.currentTime;

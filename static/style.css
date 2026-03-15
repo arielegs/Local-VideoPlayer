@@ -613,7 +613,7 @@ button:hover { opacity: 1; }
     box-shadow: 0 2px 4px rgba(0,0,0,0.5);
 }
 
-.progress-bar-container:hover .time-tooltip {
+.progress-container:hover .time-tooltip {
     opacity: 1;
 }
 
@@ -869,4 +869,25 @@ button#save-settings:hover {
 
 .primary-btn:hover {
     background: #4a00e0;
+}
+
+/* Volume OSD Popup */
+.volume-osd {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    background: rgba(0, 0, 0, 0.6);
+    color: white;
+    padding: 10px 20px;
+    border-radius: 4px;
+    font-size: 20px;
+    font-weight: bold;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    z-index: 50;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+}
+.volume-osd.show {
+    opacity: 1;
 }
